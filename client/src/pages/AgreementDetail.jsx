@@ -798,9 +798,14 @@ export default function AgreementDetail() {
               }
               toast.info("Step 1/2: Approving MockUSDC transfer in MetaMask...");
 
-              const freelancerWallet =
-                agreement.freelancer?.walletAddress ||
-                "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
+              let freelancerWallet = agreement.freelancer?.walletAddress;
+              if (
+                !freelancerWallet ||
+                freelancerWallet === "0x0000000000000000000000000000000000000000" ||
+                freelancerWallet.toLowerCase() === account.toLowerCase()
+              ) {
+                freelancerWallet = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
+              }
 
               const res = await fundStreamOnChain({
                 freelancerAddress: freelancerWallet,
