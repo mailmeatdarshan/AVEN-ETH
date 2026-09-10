@@ -250,7 +250,7 @@ export function Web3Provider({ children }) {
 
       // STEP 2: Call createAndFundStream on AvenEscrowStream
       // createAndFundStream(address,address,uint256,uint256,uint256,bytes32)
-      // selector: 0x2ec6878b
+      // selector: 0xb8f1eb80
       const paddedFreelancer = freelancerAddress.toLowerCase().replace("0x", "").padStart(64, "0");
       const paddedToken = usdcAddr.toLowerCase().replace("0x", "").padStart(64, "0");
       const paddedDuration = BigInt(durationSeconds).toString(16).padStart(64, "0");
@@ -264,7 +264,7 @@ export function Web3Provider({ children }) {
         cleanAgrId = cleanAgrId.slice(0, 64);
       }
 
-      const streamData = `0x2ec6878b${paddedFreelancer}${paddedToken}${paddedBudget}${paddedDuration}${paddedCap}${cleanAgrId}`;
+      const streamData = `0xb8f1eb80${paddedFreelancer}${paddedToken}${paddedBudget}${paddedDuration}${paddedCap}${cleanAgrId}`;
 
       const fundTxHash = await window.ethereum.request({
         method: "eth_sendTransaction",
