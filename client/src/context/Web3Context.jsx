@@ -256,12 +256,16 @@ export function Web3Provider({ children }) {
       const paddedDuration = BigInt(durationSeconds).toString(16).padStart(64, "0");
       const paddedCap = BigInt(withdrawableCapPercent).toString(16).padStart(64, "0");
       
-      // External agreement ID as bytes32
-      let cleanAgrId = (externalAgreementId || "").replace("0x", "");
-      if (cleanAgrId.length < 64) {
-        cleanAgrId = cleanAgrId.padEnd(64, "0");
+      // External agreement ID as valid bytes32 hex
+      let cleanAgrId = "";
+      const rawAgrId = String(externalAgreementId || "agreement");
+      if (rawAgrId.startsWith("0x") && rawAgrId.length === 66) {
+        cleanAgrId = rawAgrId.slice(2);
       } else {
-        cleanAgrId = cleanAgrId.slice(0, 64);
+        for (let i = 0; i < rawAgrId.length && i < 32; i++) {
+          cleanAgrId += rawAgrId.charCodeAt(i).toString(16).padStart(2, "0");
+        }
+        cleanAgrId = cleanAgrId.padEnd(64, "0");
       }
 
       const streamData = `0xb8f1eb80${paddedFreelancer}${paddedToken}${paddedBudget}${paddedDuration}${paddedCap}${cleanAgrId}`;
