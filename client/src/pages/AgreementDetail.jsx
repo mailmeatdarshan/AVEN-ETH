@@ -118,6 +118,7 @@ export default function AgreementDetail() {
   const [disputing, setDisputing] = useState(false);
   const [startingProject, setStartingProject] = useState(false);
   const [onChainTx, setOnChainTx] = useState(null);
+  const [roleOverride, setRoleOverride] = useState(null);
 
   const {
     account,
@@ -173,8 +174,20 @@ export default function AgreementDetail() {
     );
   }
 
-  const isClient = user.role === "CLIENT";
-  const isFreelancer = user.role === "FREELANCER";
+  const isAgreementClient = Boolean(
+    (user?.id && agreement.clientId === user.id) ||
+    (user?.walletAddress && agreement.client?.walletAddress?.toLowerCase() === user.walletAddress.toLowerCase()) ||
+    user?.role === "CLIENT"
+  );
+  const isAgreementFreelancer = Boolean(
+    (user?.id && agreement.freelancerId === user.id) ||
+    (user?.walletAddress && agreement.freelancer?.walletAddress?.toLowerCase() === user.walletAddress.toLowerCase()) ||
+    (!isAgreementClient && user?.role === "FREELANCER")
+  );
+
+  const effectiveRole = roleOverride || (isAgreementClient ? "CLIENT" : isAgreementFreelancer ? "FREELANCER" : user?.role || "CLIENT");
+  const isClient = effectiveRole === "CLIENT";
+  const isFreelancer = effectiveRole === "FREELANCER";
   const escrowActive = ["FUNDED", "IN_PROGRESS", "SUBMITTED", "REVISION_REQUESTED"].includes(
     agreement.status
   );
@@ -632,9 +645,37 @@ export default function AgreementDetail() {
 
           {/* Stream Actions & Controls */}
           <div className="p-6 rounded-2xl bg-white dark:bg-[#0A0A0A] border border-slate-200 dark:border-white/[0.08] shadow-sm dark:shadow-2xl space-y-3 font-mono">
-            <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
-              {isClient ? "Client Stream Actions" : "Worker Actions"}
-            </p>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                {isClient ? "Client Stream Controls" : "Worker / Contributor Controls"}
+              </p>
+              <div className="flex items-center gap-1 bg-slate-100 dark:bg-white/[0.06] p-0.5 rounded-lg text-[10px]">
+                <button
+                  type="button"
+                  onClick={() => setRoleOverride("CLIENT")}
+                  className={`px-2 py-0.5 rounded-md font-mono transition-all ${
+                    isClient
+                      ? "bg-[#6366F1] text-white font-bold shadow-sm"
+                      : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white"
+                  }`}
+                  title="View controls from Client perspective"
+                >
+                  Client View
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRoleOverride("FREELANCER")}
+                  className={`px-2 py-0.5 rounded-md font-mono transition-all ${
+                    !isClient
+                      ? "bg-[#6366F1] text-white font-bold shadow-sm"
+                      : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white"
+                  }`}
+                  title="View controls from Worker perspective"
+                >
+                  Worker View
+                </button>
+              </div>
+            </div>
 
             {isClient && (
               <>
@@ -645,17 +686,21 @@ export default function AgreementDetail() {
                 )}
 
                 {agreement.status === "FUNDED" && (
-                  <div className="space-y-2">
-                    <p className="text-xs text-slate-500 dark:text-slate-400 font-sans p-3 rounded-xl bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.06]">
-                      Waiting for {agreement.freelancer?.name} to accept and start streaming work.
-                    </p>
+                  <div className="space-y-2.5">
+                    <div className="p-3.5 bg-emerald-50 dark:bg-emerald-500/10 rounded-xl border border-emerald-200 dark:border-emerald-500/20 text-xs text-emerald-800 dark:text-emerald-300 space-y-1">
+                      <p className="font-semibold flex items-center gap-1.5">
+                        <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                        Vault Funded &amp; Locked
+                      </p>
+                      <p className="text-[11px] text-slate-600 dark:text-slate-400 font-sans">
+                        Waiting for contributor {agreement.freelancer?.name || "freelancer"} to accept the agreement and initiate work tracking.
+                      </p>
+                    </div>
                     <button
-                      className="btn-primary w-full text-xs shadow-lg shadow-indigo-500/25"
-                      onClick={handleStartProject}
-                      disabled={startingProject}
+                      className="btn-danger w-full text-xs"
+                      onClick={() => setCancelOpen(true)}
                     >
-                      {startingProject && <span className="h-3.5 w-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin mr-2" />}
-                      {startingProject ? "Starting Project..." : "Accept & Open Work Session (Demo Mode)"}
+                      Cancel Stream &amp; Refund Vault
                     </button>
                   </div>
                 )}
@@ -664,10 +709,10 @@ export default function AgreementDetail() {
                   <div className="space-y-2">
                     <Link
                       to={`/agreements/${agreement.id}/work`}
-                      className="btn-primary w-full text-center flex items-center justify-center gap-2 text-xs shadow-lg shadow-indigo-500/25"
+                      className="h-10 px-4 rounded-xl bg-slate-100 dark:bg-white/[0.08] hover:bg-slate-200 dark:hover:bg-white/[0.12] text-slate-900 dark:text-white border border-slate-200 dark:border-white/[0.1] w-full text-center flex items-center justify-center gap-2 text-xs font-mono transition-all shadow-sm"
                     >
-                      <span className={`h-2 w-2 rounded-full ${agreement.session?.status === "RUNNING" ? "bg-emerald-400 animate-ping" : "bg-white/40"}`} />
-                      {agreement.session?.status === "RUNNING" ? "View Active Work Session (Timer ON)" : "View Work Session & Telemetry"}
+                      <span className={`h-2 w-2 rounded-full ${agreement.session?.status === "RUNNING" ? "bg-emerald-400 animate-ping" : "bg-slate-400"}`} />
+                      {agreement.session?.status === "RUNNING" ? "Monitor Contributor Session (Timer Active)" : "View Contributor Telemetry & Proofs"}
                     </Link>
                     <button
                       className="btn-secondary w-full text-xs"

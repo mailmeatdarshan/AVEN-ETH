@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import AppLayout from "../layouts/AppLayout.jsx";
+import { useAuth } from "../context/AuthContext.jsx";
 import { api } from "../api/client.js";
 import { useToast } from "../context/ToastContext.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
@@ -10,12 +11,14 @@ export default function WorkSession() {
   const { id } = useParams();
   const navigate = useNavigate();
   const toast = useToast();
+  const { user } = useAuth();
 
   const [agreement, setAgreement] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [claiming, setClaiming] = useState(false);
   const [liveSeconds, setLiveSeconds] = useState(0);
+  const [roleOverride, setRoleOverride] = useState(null);
   const tickRef = useRef(null);
 
   // Work Mode: "CODE" (Git-based) vs "GENERAL" (Data entry, design, writing, research)
@@ -167,6 +170,20 @@ export default function WorkSession() {
   const totalWithdrawn = Number(agreement.totalWithdrawn || 0);
   const availableToClaim = Math.max(0, Math.round((currentTotalEarned - totalWithdrawn) * 10000) / 10000);
 
+  const isAgreementClient = Boolean(
+    (user?.id && agreement?.clientId === user?.id) ||
+    (user?.walletAddress && agreement?.client?.walletAddress?.toLowerCase() === user?.walletAddress?.toLowerCase()) ||
+    user?.role === "CLIENT"
+  );
+  const isAgreementFreelancer = Boolean(
+    (user?.id && agreement?.freelancerId === user?.id) ||
+    (user?.walletAddress && agreement?.freelancer?.walletAddress?.toLowerCase() === user?.walletAddress?.toLowerCase()) ||
+    (!isAgreementClient && user?.role === "FREELANCER")
+  );
+
+  const effectiveRole = roleOverride || (isAgreementClient ? "CLIENT" : "FREELANCER");
+  const isClient = effectiveRole === "CLIENT";
+
   const showSubmissionForm = agreement.status === "IN_PROGRESS" || agreement.status === "REVISION_REQUESTED";
   const isRevision = agreement.submission?.status === "REVISION_REQUESTED";
 
@@ -184,6 +201,59 @@ export default function WorkSession() {
       <Link to={`/agreements/${agreement.id}`} className="text-xs font-mono text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white mb-5 inline-flex items-center gap-1 transition-colors">
         &larr; Back to stream
       </Link>
+
+      {/* Role / Perspective Banner */}
+      <div className="mb-6 p-4 rounded-2xl bg-white dark:bg-[#0A0A0A] border border-slate-200 dark:border-white/[0.08] shadow-sm dark:shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 font-mono">
+        <div className="flex items-center gap-3">
+          <div className={`h-9 w-9 rounded-xl flex items-center justify-center text-sm font-bold ${isClient ? "bg-indigo-500/10 text-[#6366F1] dark:text-[#818CF8]" : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"}`}>
+            {isClient ? "👁️" : "⚡"}
+          </div>
+          <div>
+            <p className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              {isClient ? "Client Observer Mode: Live Contributor Telemetry" : "Contributor Work Session & Timer"}
+              {status === "RUNNING" && (
+                <span className="flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-2 py-0.5 rounded-full font-semibold">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-ping" />
+                  Streaming Live
+                </span>
+              )}
+            </p>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 font-sans">
+              {isClient
+                ? `Real-time proof of work telemetry, Git Merkle proofs, and earned streaming payments for ${agreement.freelancer?.name || "contributor"}.`
+                : "Active work tracking, cryptographic proof recording, and payment streaming for this agreement."}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-white/[0.06] p-1 rounded-xl text-[10px]">
+          <span className="text-slate-500 dark:text-slate-400 text-[10px] uppercase font-semibold px-1">View as:</span>
+          <button
+            type="button"
+            onClick={() => setRoleOverride("CLIENT")}
+            className={`px-2.5 py-1 rounded-lg transition-all ${
+              isClient
+                ? "bg-[#6366F1] text-white font-bold shadow-sm"
+                : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white"
+            }`}
+            title="Switch to Client perspective"
+          >
+            Client View
+          </button>
+          <button
+            type="button"
+            onClick={() => setRoleOverride("FREELANCER")}
+            className={`px-2.5 py-1 rounded-lg transition-all ${
+              !isClient
+                ? "bg-[#6366F1] text-white font-bold shadow-sm"
+                : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white"
+            }`}
+            title="Switch to Contributor perspective"
+          >
+            Worker View
+          </button>
+        </div>
+      </div>
 
       <div className="grid lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
@@ -268,29 +338,49 @@ export default function WorkSession() {
             </div>
 
             <div className="relative flex items-center justify-center gap-3 mt-7 flex-wrap font-mono">
-              {(status === "IDLE" || status === "STOPPED") && (
-                <button className="h-10 px-6 rounded-xl bg-[#6366F1] hover:bg-[#5558E6] text-white text-xs font-medium uppercase tracking-wider transition-all shadow-md shadow-indigo-500/25" onClick={() => runAction("start")} disabled={busy}>
-                  {status === "STOPPED" ? "Log More Time" : "Start Tracking Work"}
-                </button>
-              )}
-              {status === "PAUSED" && (
+              {isClient ? (
+                <div className="flex flex-col items-center gap-3">
+                  <p className="text-xs text-slate-600 dark:text-slate-300 font-sans">
+                    {status === "RUNNING"
+                      ? `🟢 ${agreement.freelancer?.name || "Contributor"} is currently tracking active work.`
+                      : status === "PAUSED"
+                      ? `⏸️ ${agreement.freelancer?.name || "Contributor"} has paused this work session.`
+                      : `Standby: ${agreement.freelancer?.name || "Contributor"} has not initiated the live timer yet.`}
+                  </p>
+                  <Link
+                    to={`/agreements/${agreement.id}`}
+                    className="h-10 px-5 rounded-xl bg-slate-100 dark:bg-[#171717] text-slate-800 dark:text-slate-300 border border-slate-200 dark:border-white/[0.08] hover:bg-slate-200 dark:hover:bg-[#1F1F1F] text-xs font-medium uppercase transition-all shadow-sm flex items-center gap-2"
+                  >
+                    <span>&larr;</span> Return to Stream Controls
+                  </Link>
+                </div>
+              ) : (
                 <>
-                  <button className="h-10 px-6 rounded-xl bg-[#6366F1] hover:bg-[#5558E6] text-white text-xs font-medium uppercase tracking-wider transition-all shadow-md shadow-indigo-500/25" onClick={() => runAction("resume")} disabled={busy}>
-                    Resume Session
-                  </button>
-                  <button className="h-10 px-5 rounded-xl bg-slate-100 dark:bg-[#171717] text-slate-800 dark:text-slate-300 border border-slate-200 dark:border-white/[0.08] hover:bg-slate-200 dark:hover:bg-[#1F1F1F] text-xs font-medium uppercase transition-all shadow-sm" onClick={() => runAction("stop")} disabled={busy}>
-                    Stop Session &amp; Generate Proof
-                  </button>
-                </>
-              )}
-              {status === "RUNNING" && (
-                <>
-                  <button className="h-10 px-5 rounded-xl bg-slate-100 dark:bg-[#171717] text-slate-800 dark:text-slate-300 border border-slate-200 dark:border-white/[0.08] hover:bg-slate-200 dark:hover:bg-[#1F1F1F] text-xs font-medium uppercase transition-all shadow-sm" onClick={() => runAction("pause")} disabled={busy}>
-                    Pause
-                  </button>
-                  <button className="h-10 px-5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-medium uppercase tracking-wider transition-all shadow-md" onClick={() => runAction("stop")} disabled={busy}>
-                    Stop &amp; Generate Proof
-                  </button>
+                  {(status === "IDLE" || status === "STOPPED") && (
+                    <button className="h-10 px-6 rounded-xl bg-[#6366F1] hover:bg-[#5558E6] text-white text-xs font-medium uppercase tracking-wider transition-all shadow-md shadow-indigo-500/25" onClick={() => runAction("start")} disabled={busy}>
+                      {status === "STOPPED" ? "Log More Time" : "Start Tracking Work"}
+                    </button>
+                  )}
+                  {status === "PAUSED" && (
+                    <>
+                      <button className="h-10 px-6 rounded-xl bg-[#6366F1] hover:bg-[#5558E6] text-white text-xs font-medium uppercase tracking-wider transition-all shadow-md shadow-indigo-500/25" onClick={() => runAction("resume")} disabled={busy}>
+                        Resume Session
+                      </button>
+                      <button className="h-10 px-5 rounded-xl bg-slate-100 dark:bg-[#171717] text-slate-800 dark:text-slate-300 border border-slate-200 dark:border-white/[0.08] hover:bg-slate-200 dark:hover:bg-[#1F1F1F] text-xs font-medium uppercase transition-all shadow-sm" onClick={() => runAction("stop")} disabled={busy}>
+                        Stop Session &amp; Generate Proof
+                      </button>
+                    </>
+                  )}
+                  {status === "RUNNING" && (
+                    <>
+                      <button className="h-10 px-5 rounded-xl bg-slate-100 dark:bg-[#171717] text-slate-800 dark:text-slate-300 border border-slate-200 dark:border-white/[0.08] hover:bg-slate-200 dark:hover:bg-[#1F1F1F] text-xs font-medium uppercase transition-all shadow-sm" onClick={() => runAction("pause")} disabled={busy}>
+                        Pause
+                      </button>
+                      <button className="h-10 px-5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-medium uppercase tracking-wider transition-all shadow-md" onClick={() => runAction("stop")} disabled={busy}>
+                        Stop &amp; Generate Proof
+                      </button>
+                    </>
+                  )}
                 </>
               )}
             </div>
@@ -391,75 +481,126 @@ export default function WorkSession() {
             </div>
           )}
 
-          {/* Submission form */}
-          {showSubmissionForm && (
-            <div className="p-6 rounded-2xl bg-white dark:bg-[#0A0A0A] border border-slate-200 dark:border-white/[0.08] shadow-sm dark:shadow-xl space-y-4">
+          {/* Submission / Verification section */}
+          {isClient ? (
+            <div className="p-6 rounded-2xl bg-white dark:bg-[#0A0A0A] border border-slate-200 dark:border-white/[0.08] shadow-sm dark:shadow-xl space-y-4 font-mono">
               <p className="text-xs font-mono font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                {isRevision ? "Resubmit Verified Work" : "Submit Work for Client Review & Attestation"}
+                Deliverable Verification &amp; Attestation
               </p>
-              <div className="space-y-4 font-mono text-xs">
-                {workMode === "CODE" ? (
-                  <div>
-                    <label className="field-label">Git Branch</label>
-                    <input
-                      type="text"
-                      className="input"
-                      value={branch}
-                      onChange={(e) => setBranch(e.target.value)}
-                    />
+              {agreement.status === "SUBMITTED" ? (
+                <div className="space-y-3 text-xs">
+                  <div className="p-4 bg-emerald-50 dark:bg-emerald-500/10 rounded-xl border border-emerald-200 dark:border-emerald-500/20 text-emerald-800 dark:text-emerald-300 space-y-2">
+                    <p className="font-bold flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping" />
+                      Deliverables Submitted for Your Review
+                    </p>
+                    {agreement.submission?.description && (
+                      <p className="font-sans text-slate-700 dark:text-slate-300">{agreement.submission.description}</p>
+                    )}
+                    {agreement.submission?.branch && (
+                      <p className="text-[11px] font-mono text-slate-600 dark:text-slate-400">
+                        Git Branch: <span className="font-bold text-slate-900 dark:text-white">{agreement.submission.branch}</span>
+                      </p>
+                    )}
+                    {agreement.submission?.deliverableUrl && (
+                      <a
+                        href={agreement.submission.deliverableUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[#6366F1] dark:text-[#818CF8] underline break-all block"
+                      >
+                        Open Deliverable URL &rarr;
+                      </a>
+                    )}
                   </div>
-                ) : (
-                  <div>
-                    <label className="field-label">Deliverable URL / Link (Figma, Google Sheet, Notion, Docs)</label>
-                    <input
-                      type="url"
-                      className="input"
-                      placeholder="https://www.figma.com/file/... or https://docs.google.com/spreadsheets/..."
-                      value={deliverableUrl}
-                      onChange={(e) => setDeliverableUrl(e.target.value)}
-                    />
-                  </div>
-                )}
-
-                <div>
-                  <label className="field-label">Work Summary &amp; Milestone Notes</label>
-                  <textarea
-                    rows={4}
-                    className={`input resize-none font-sans ${submitError ? "input-error" : ""}`}
-                    placeholder={
-                      workMode === "CODE"
-                        ? "Summarize what you implemented, commits made, and architectural notes..."
-                        : "Describe the completed deliverables (e.g. 500 entries verified in sheet, design system updated)..."
-                    }
-                    value={description}
-                    onChange={(e) => {
-                      setDescription(e.target.value);
-                      setSubmitError(null);
-                    }}
-                  />
+                  <Link
+                    to={`/agreements/${agreement.id}`}
+                    className="btn-primary w-full text-center flex items-center justify-center gap-2 text-xs shadow-lg shadow-indigo-500/25"
+                  >
+                    Review &amp; Approve Attestation on Stream Page &rarr;
+                  </Link>
                 </div>
-
-                <div>
-                  <label className="field-label">Attachments / Files (comma-separated)</label>
-                  <input
-                    className="input"
-                    placeholder="data_export_v1.csv, design_assets.zip, summary.pdf"
-                    value={deliverablesText}
-                    onChange={(e) => setDeliverablesText(e.target.value)}
-                  />
+              ) : (
+                <div className="p-4 bg-slate-50 dark:bg-[#141414] rounded-xl border border-slate-200 dark:border-white/[0.06] text-xs text-slate-600 dark:text-slate-400 font-sans space-y-1">
+                  <p className="font-semibold text-slate-900 dark:text-white font-mono">
+                    Waiting for Contributor Submission
+                  </p>
+                  <p>
+                    Once {agreement.freelancer?.name || "contributor"} finishes work and submits deliverables, you will be prompted to verify the work and mint an on-chain EAS reputation attestation.
+                  </p>
                 </div>
-
-                {submitError && <p className="field-error !mt-0">{submitError}</p>}
-                <button
-                  className="h-10 px-5 rounded-xl bg-[#6366F1] hover:bg-[#5558E6] text-white font-mono text-xs font-semibold uppercase tracking-wider transition-all shadow-md shadow-indigo-500/25 w-full flex items-center justify-center gap-2"
-                  onClick={handleSubmit}
-                  disabled={submitting}
-                >
-                  {submitting && <span className="h-3.5 w-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin mr-2" />}
-                  {submitting ? "Submitting Proof..." : "Submit for Client Review"}
-                </button>
-              </div>
+              )}
             </div>
+          ) : (
+            showSubmissionForm && (
+              <div className="p-6 rounded-2xl bg-white dark:bg-[#0A0A0A] border border-slate-200 dark:border-white/[0.08] shadow-sm dark:shadow-xl space-y-4">
+                <p className="text-xs font-mono font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                  {isRevision ? "Resubmit Verified Work" : "Submit Work for Client Review & Attestation"}
+                </p>
+                <div className="space-y-4 font-mono text-xs">
+                  {workMode === "CODE" ? (
+                    <div>
+                      <label className="field-label">Git Branch</label>
+                      <input
+                        type="text"
+                        className="input"
+                        value={branch}
+                        onChange={(e) => setBranch(e.target.value)}
+                      />
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="field-label">Deliverable URL / Link (Figma, Google Sheet, Notion, Docs)</label>
+                      <input
+                        type="url"
+                        className="input"
+                        placeholder="https://www.figma.com/file/... or https://docs.google.com/spreadsheets/..."
+                        value={deliverableUrl}
+                        onChange={(e) => setDeliverableUrl(e.target.value)}
+                      />
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="field-label">Work Summary &amp; Milestone Notes</label>
+                    <textarea
+                      rows={4}
+                      className={`input resize-none font-sans ${submitError ? "input-error" : ""}`}
+                      placeholder={
+                        workMode === "CODE"
+                          ? "Summarize what you implemented, commits made, and architectural notes..."
+                          : "Describe the completed deliverables (e.g. 500 entries verified in sheet, design system updated)..."
+                      }
+                      value={description}
+                      onChange={(e) => {
+                        setDescription(e.target.value);
+                        setSubmitError(null);
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="field-label">Attachments / Files (comma-separated)</label>
+                    <input
+                      className="input"
+                      placeholder="data_export_v1.csv, design_assets.zip, summary.pdf"
+                      value={deliverablesText}
+                      onChange={(e) => setDeliverablesText(e.target.value)}
+                    />
+                  </div>
+
+                  {submitError && <p className="field-error !mt-0">{submitError}</p>}
+                  <button
+                    className="h-10 px-5 rounded-xl bg-[#6366F1] hover:bg-[#5558E6] text-white font-mono text-xs font-semibold uppercase tracking-wider transition-all shadow-md shadow-indigo-500/25 w-full flex items-center justify-center gap-2"
+                    onClick={handleSubmit}
+                    disabled={submitting}
+                  >
+                    {submitting && <span className="h-3.5 w-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin mr-2" />}
+                    {submitting ? "Submitting Proof..." : "Submit for Client Review"}
+                  </button>
+                </div>
+              </div>
+            )
           )}
         </div>
 
@@ -490,7 +631,14 @@ export default function WorkSession() {
               </div>
             </dl>
 
-            {availableToClaim > 0.0001 && (
+            {isClient ? (
+              <Link
+                to={`/agreements/${agreement.id}`}
+                className="h-10 px-4 rounded-xl bg-slate-100 dark:bg-white/[0.08] hover:bg-slate-200 dark:hover:bg-white/[0.12] text-slate-900 dark:text-white border border-slate-200 dark:border-white/[0.1] font-mono text-xs font-semibold uppercase tracking-wide transition-all shadow-sm w-full flex items-center justify-center gap-1.5"
+              >
+                Manage Stream Vault &rarr;
+              </Link>
+            ) : availableToClaim > 0.0001 ? (
               <button
                 onClick={handleClaimStream}
                 disabled={claiming}
@@ -498,7 +646,7 @@ export default function WorkSession() {
               >
                 {claiming ? "Mining Claim Tx..." : `Claim ${formatEth(availableToClaim)} Now`}
               </button>
-            )}
+            ) : null}
           </div>
         </div>
       </div>

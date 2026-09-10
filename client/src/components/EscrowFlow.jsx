@@ -1,8 +1,25 @@
 function Node({ label, sub, active, isVault }) {
+  const isImageUrl =
+    typeof label === "string" &&
+    (label.startsWith("http://") ||
+      label.startsWith("https://") ||
+      label.startsWith("data:image/") ||
+      label.includes("dicebear.com"));
+
+  function getFallbackInitials() {
+    if (typeof label === "string" && label.length <= 3) return label;
+    if (sub && typeof sub === "string") {
+      const parts = sub.trim().split(/\s+/);
+      if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+      return sub.slice(0, 2).toUpperCase();
+    }
+    return "SK";
+  }
+
   return (
     <div className="flex flex-col items-center gap-1.5 text-center w-28 shrink-0">
       <div
-        className={`h-12 w-12 rounded-xl flex items-center justify-center text-xs font-mono font-bold border transition-all ${
+        className={`h-12 w-12 rounded-xl flex items-center justify-center text-xs font-mono font-bold border transition-all overflow-hidden ${
           active
             ? isVault
               ? "border-emerald-500/50 text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 shadow-lg shadow-emerald-500/15"
@@ -15,8 +32,16 @@ function Node({ label, sub, active, isVault }) {
             <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
             <path d="M7 11V7a5 5 0 0 1 10 0v4" />
           </svg>
+        ) : isImageUrl ? (
+          <img src={label} alt={sub || "Avatar"} className="h-full w-full object-cover" />
+        ) : sub ? (
+          <img
+            src={`https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(sub)}&backgroundColor=6366f1,4f46e5,4338ca`}
+            alt={sub}
+            className="h-full w-full object-cover"
+          />
         ) : (
-          label
+          <span className="uppercase font-semibold tracking-wider">{getFallbackInitials()}</span>
         )}
       </div>
       <span className="text-[11px] font-mono text-slate-700 dark:text-slate-300 font-medium leading-tight truncate max-w-[100px]">{sub}</span>
