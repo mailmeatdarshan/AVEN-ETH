@@ -357,6 +357,18 @@ export default function AgreementDetail() {
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
                   <span>Base Sepolia Vault: {truncateAddress(CONTRACT_ADDRESSES.AvenEscrowStream)}</span>
                 </a>
+                {(agreement.onChainFundingTx || onChainTx) && (
+                  <a
+                    href={`https://sepolia.basescan.org/tx/${agreement.onChainFundingTx || onChainTx}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[11px] font-mono text-indigo-700 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800/40 px-2.5 py-1 rounded-lg hover:underline flex items-center gap-1.5"
+                    title="View on-chain funding transaction on Basescan"
+                  >
+                    <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-pulse" />
+                    <span>Funding Tx: {truncateAddress(agreement.onChainFundingTx || onChainTx)}</span>
+                  </a>
+                )}
               </div>
               <StatusBadge status={agreement.status} />
             </div>
@@ -633,13 +645,30 @@ export default function AgreementDetail() {
                 )}
 
                 {agreement.status === "FUNDED" && (
-                  <p className="text-xs text-slate-500 dark:text-slate-400 font-sans p-3 rounded-xl bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.06]">
-                    Waiting for {agreement.freelancer?.name} to accept and start streaming work.
-                  </p>
+                  <div className="space-y-2">
+                    <p className="text-xs text-slate-500 dark:text-slate-400 font-sans p-3 rounded-xl bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.06]">
+                      Waiting for {agreement.freelancer?.name} to accept and start streaming work.
+                    </p>
+                    <button
+                      className="btn-primary w-full text-xs shadow-lg shadow-indigo-500/25"
+                      onClick={handleStartProject}
+                      disabled={startingProject}
+                    >
+                      {startingProject && <span className="h-3.5 w-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin mr-2" />}
+                      {startingProject ? "Starting Project..." : "Accept & Open Work Session (Demo Mode)"}
+                    </button>
+                  </div>
                 )}
 
                 {agreement.status === "IN_PROGRESS" && (
                   <div className="space-y-2">
+                    <Link
+                      to={`/agreements/${agreement.id}/work`}
+                      className="btn-primary w-full text-center flex items-center justify-center gap-2 text-xs shadow-lg shadow-indigo-500/25"
+                    >
+                      <span className={`h-2 w-2 rounded-full ${agreement.session?.status === "RUNNING" ? "bg-emerald-400 animate-ping" : "bg-white/40"}`} />
+                      {agreement.session?.status === "RUNNING" ? "View Active Work Session (Timer ON)" : "View Work Session & Telemetry"}
+                    </Link>
                     <button
                       className="btn-secondary w-full text-xs"
                       onClick={handlePauseStream}
@@ -756,9 +785,17 @@ export default function AgreementDetail() {
                 )}
 
                 {agreement.status === "SUBMITTED" && (
-                  <p className="text-xs text-slate-500 dark:text-slate-400 font-sans p-3 rounded-xl bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.06]">
-                    Waiting for {agreement.client?.name} to verify your submission.
-                  </p>
+                  <div className="space-y-2.5">
+                    <p className="text-xs text-slate-500 dark:text-slate-400 font-sans p-3 rounded-xl bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.06]">
+                      Waiting for {agreement.client?.name} to verify your submission.
+                    </p>
+                    <button
+                      className="h-10 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-mono text-xs font-bold uppercase tracking-wide transition-all shadow-md shadow-emerald-500/20 w-full"
+                      onClick={() => setRatingModalOpen(true)}
+                    >
+                      Approve &amp; Mint Attestation (Demo Mode)
+                    </button>
+                  </div>
                 )}
 
                 {agreement.status === "COMPLETED" && (
@@ -790,6 +827,7 @@ export default function AgreementDetail() {
         confirmLabel="Confirm & Lock Deposit"
         loadingLabel="Locking in vault..."
         onConfirm={async () => {
+          let txHash = null;
           if (account) {
             try {
               if (!isBaseSepolia) {
@@ -815,15 +853,18 @@ export default function AgreementDetail() {
                 externalAgreementId: agreement.id,
               });
 
-              setOnChainTx(res.txHash);
-              toast.success(`Funded on Base Sepolia! Tx: ${res.txHash.slice(0, 10)}...`);
+              if (res?.txHash) {
+                txHash = res.txHash;
+                setOnChainTx(txHash);
+                toast.success(`Funded on Base Sepolia! Tx: ${txHash.slice(0, 10)}...`);
+              }
             } catch (onChainErr) {
               console.warn("On-chain execution notice:", onChainErr);
               toast.warning(`MetaMask Notice: ${onChainErr.message || "Simulated lock will proceed"}`);
             }
           }
 
-          await api.fundEscrow(agreement.id);
+          await api.fundEscrow(agreement.id, { onChainTx: txHash });
           toast.success("Stream funded successfully.");
           setFundOpen(false);
           load();

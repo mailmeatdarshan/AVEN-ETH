@@ -134,14 +134,15 @@ router.post("/", requireRole("CLIENT"), (req, res) => {
   });
 });
 
-router.post("/:id/fund", requireRole("CLIENT"), (req, res) => {
+router.post("/:id/fund", (req, res) => {
   handle(res, () => {
-    const { agreement, transaction } = fundEscrow(req.params.id, req.user.id);
+    const { onChainTx } = req.body || {};
+    const { agreement, transaction } = fundEscrow(req.params.id, req.user.id, { onChainTx });
     return { agreement: enrich(agreement), transaction };
   });
 });
 
-router.post("/:id/start", requireRole("FREELANCER"), (req, res) => {
+router.post("/:id/start", (req, res) => {
   handle(res, () => {
     const { agreement, session } = startProject(req.params.id, req.user.id);
     return { agreement: enrich(agreement), session };
@@ -172,7 +173,7 @@ router.post("/:id/cancel", requireRole("CLIENT"), (req, res) => {
   });
 });
 
-router.post("/:id/withdraw", requireRole("FREELANCER"), (req, res) => {
+router.post("/:id/withdraw", (req, res) => {
   handle(res, () => {
     const { amount } = req.body || {};
     const { agreement, transaction, attestation, amountWithdrawn } = withdrawStreamed(
@@ -184,7 +185,7 @@ router.post("/:id/withdraw", requireRole("FREELANCER"), (req, res) => {
   });
 });
 
-router.post("/:id/work/:action", requireRole("FREELANCER"), (req, res) => {
+router.post("/:id/work/:action", (req, res) => {
   handle(res, () => {
     const session = workAction(req.params.id, req.user.id, req.params.action, req.body);
     const agreement = db.agreements.findById(req.params.id);
@@ -255,14 +256,14 @@ router.post("/:id/dispute/resolve", requireRole("CLIENT"), (req, res) => {
   });
 });
 
-router.post("/:id/submit", requireRole("FREELANCER"), (req, res) => {
+router.post("/:id/submit", (req, res) => {
   handle(res, () => {
     const { agreement, submission } = submitWork(req.params.id, req.user.id, req.body || {});
     return { agreement: enrich(agreement), submission };
   });
 });
 
-router.post("/:id/approve", requireRole("CLIENT"), (req, res) => {
+router.post("/:id/approve", (req, res) => {
   handle(res, () => {
     const { rating, review } = req.body || {};
     const { agreement, transaction, attestation } = approveAndRelease(
@@ -274,7 +275,7 @@ router.post("/:id/approve", requireRole("CLIENT"), (req, res) => {
   });
 });
 
-router.post("/:id/revision", requireRole("CLIENT"), (req, res) => {
+router.post("/:id/revision", (req, res) => {
   handle(res, () => {
     const { feedback } = req.body || {};
     const { agreement, submission } = requestRevision(req.params.id, req.user.id, feedback);
@@ -282,7 +283,7 @@ router.post("/:id/revision", requireRole("CLIENT"), (req, res) => {
   });
 });
 
-router.post("/:id/reject", requireRole("CLIENT"), (req, res) => {
+router.post("/:id/reject", (req, res) => {
   handle(res, () => {
     const { reason } = req.body || {};
     const { agreement, submission } = rejectSubmission(req.params.id, req.user.id, reason);

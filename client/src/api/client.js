@@ -64,7 +64,7 @@ export const api = {
   agreements: () => request("/agreements"),
   agreement: (id) => request(`/agreements/${id}`),
   createAgreement: (payload) => request("/agreements", { method: "POST", body: payload }),
-  fundEscrow: (id) => request(`/agreements/${id}/fund`, { method: "POST" }),
+  fundEscrow: (id, body = {}) => request(`/agreements/${id}/fund`, { method: "POST", body }),
   startProject: (id) => request(`/agreements/${id}/start`, { method: "POST" }),
   pauseStream: (id) => request(`/agreements/${id}/pause`, { method: "POST" }),
   resumeStream: (id) => request(`/agreements/${id}/resume`, { method: "POST" }),
