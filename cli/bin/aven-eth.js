@@ -51,11 +51,27 @@ async function apiRequest(url, path, { method = "GET", body, token } = {}) {
       headers,
       body: body ? JSON.stringify(body) : undefined,
     });
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.error || `HTTP ${res.status}`);
+    const text = await res.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = null;
     }
-    return data;
+
+    if (!res.ok) {
+      if (data && data.error) {
+        throw new Error(data.error);
+      }
+      if (res.status === 405 || res.status === 404) {
+        throw new Error(
+          `HTTP ${res.status}: Backend API is not reachable at ${url}${path}. Make sure your backend server is running and deployed.`
+        );
+      }
+      throw new Error(`HTTP ${res.status}: ${text.slice(0, 100) || "Empty response from server"}`);
+    }
+
+    return data || {};
   } catch (err) {
     throw new Error(`API Error [${path}]: ${err.message}`);
   }
