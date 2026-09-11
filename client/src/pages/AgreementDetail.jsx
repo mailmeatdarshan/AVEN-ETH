@@ -502,9 +502,17 @@ export default function AgreementDetail() {
                 </div>
                 {agreement.submission ? (
                   <StatusBadge status={agreement.submission.status} />
-                ) : (
+                ) : Boolean(agreement.submission?.reportHash || (agreement.session?.baseCommit && agreement.session.baseCommit !== "0000000000000000000000000000000000000000")) ? (
                   <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30">
-                    Live Watcher Active
+                    Live Watcher Synced
+                  </span>
+                ) : agreement.session?.status === "RUNNING" ? (
+                  <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded-full bg-sky-50 dark:bg-sky-500/15 text-sky-600 dark:text-sky-300 border border-sky-200 dark:border-sky-500/30">
+                    Browser Timer Active
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded-full bg-slate-100 dark:bg-white/[0.06] text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-white/[0.08]">
+                    Standby (No Git Link)
                   </span>
                 )}
               </div>
@@ -517,14 +525,22 @@ export default function AgreementDetail() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 rounded-xl bg-slate-50 dark:bg-[#141414] text-xs font-mono border border-slate-200 dark:border-white/[0.06]">
                 <div>
                   <span className="text-slate-500 dark:text-slate-400 text-[10px] block uppercase tracking-wider mb-1">Base Commit Locked:</span>
-                  <span className="font-semibold text-[#6366F1] dark:text-[#818CF8] break-all">
-                    {agreement.submission?.baseCommit || agreement.session?.baseCommit || "0000000000000000000000000000000000000000"}
+                  <span className="font-semibold break-all text-[#6366F1] dark:text-[#818CF8]">
+                    {(!agreement.submission?.baseCommit && (!agreement.session?.baseCommit || agreement.session?.baseCommit === "0000000000000000000000000000000000000000")) ? (
+                      <span className="text-slate-400 dark:text-slate-500 font-normal italic">None (Browser Timer Mode - No Git Link)</span>
+                    ) : (
+                      agreement.submission?.baseCommit || agreement.session?.baseCommit
+                    )}
                   </span>
                 </div>
                 <div>
                   <span className="text-slate-500 dark:text-slate-400 text-[10px] block uppercase tracking-wider mb-1">Head Commit Recorded:</span>
-                  <span className="font-semibold text-[#6366F1] dark:text-[#818CF8] break-all">
-                    {agreement.submission?.headCommit || agreement.session?.headCommit || agreement.session?.baseCommit || "0000000000000000000000000000000000000000"}
+                  <span className="font-semibold break-all text-[#6366F1] dark:text-[#818CF8]">
+                    {(!agreement.submission?.headCommit && (!agreement.session?.headCommit || agreement.session?.headCommit === "0000000000000000000000000000000000000000")) ? (
+                      <span className="text-slate-400 dark:text-slate-500 font-normal italic">None (Awaiting CLI Git Commit)</span>
+                    ) : (
+                      agreement.submission?.headCommit || agreement.session?.headCommit || agreement.session?.baseCommit
+                    )}
                   </span>
                 </div>
               </div>
@@ -560,6 +576,18 @@ export default function AgreementDetail() {
                   </span>
                 </div>
               </div>
+
+              {!agreement.submission && !agreement.session?.reportHash && (!agreement.session?.baseCommit || agreement.session.baseCommit === "0000000000000000000000000000000000000000") && (
+                <div className="rounded-xl bg-slate-50 dark:bg-white/[0.03] border border-dashed border-slate-200 dark:border-white/[0.08] p-3 text-xs font-mono text-slate-500 dark:text-slate-400 flex items-start gap-2.5">
+                  <span className="text-sm shrink-0">💡</span>
+                  <div className="space-y-0.5">
+                    <p className="font-semibold text-slate-700 dark:text-slate-300">Browser Timer Active</p>
+                    <p className="text-[11px] leading-relaxed">
+                      Worker is tracking work directly from the browser. If they run the <strong>Sidekick Git Watcher CLI</strong> in their repository, live commit hashes and code diffs will appear here automatically.
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {(agreement.submission?.reportHash || agreement.session?.reportHash) && (
                 <div className="text-xs font-mono bg-slate-100 dark:bg-[#050505] p-3.5 rounded-xl border border-slate-200 dark:border-white/[0.06] space-y-1">
