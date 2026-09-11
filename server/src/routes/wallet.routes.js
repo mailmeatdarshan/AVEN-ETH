@@ -65,7 +65,7 @@ router.post("/deposit", (req, res) => {
     return res.status(400).json({ error: "Please enter a valid deposit amount greater than 0." });
   }
   if (amount > 1000) {
-    return res.status(400).json({ error: "Maximum deposit limit per transaction is 1,000 ETH." });
+    return res.status(400).json({ error: "Maximum deposit limit per transaction is 1,000 USDC." });
   }
 
   const roundedAmount = Math.round(amount * 10000) / 10000;
@@ -89,7 +89,7 @@ router.post("/deposit", (req, res) => {
   notify(userId, {
     type: "WALLET_DEPOSIT",
     title: "Funds Deposited to Wallet",
-    message: `Successfully credited ${roundedAmount.toFixed(4)} ETH to your wallet. Tx: ${txn.simulatedTxHash.slice(0, 10)}...`,
+    message: `Successfully credited ${roundedAmount.toFixed(4)} USDC to your wallet. Tx: ${txn.simulatedTxHash.slice(0, 10)}...`,
   });
 
   res.json({
@@ -118,7 +118,7 @@ router.post("/transfer", (req, res) => {
   const currentBalance = user.walletBalance || 0;
   if (amount > currentBalance) {
     return res.status(400).json({
-      error: `Insufficient balance. Available: ${currentBalance.toFixed(4)} ETH, Requested: ${amount.toFixed(4)} ETH.`,
+      error: `Insufficient balance. Available: ${currentBalance.toFixed(4)} USDC, Requested: ${amount.toFixed(4)} USDC.`,
     });
   }
 
@@ -135,7 +135,7 @@ router.post("/transfer", (req, res) => {
     notify(recipient.id, {
       type: "WALLET_TRANSFER",
       title: "Funds Received",
-      message: `Received ${roundedAmount.toFixed(4)} ETH from ${user.name}.`,
+      message: `Received ${roundedAmount.toFixed(4)} USDC from ${user.name}.`,
     });
   }
 
@@ -153,7 +153,7 @@ router.post("/transfer", (req, res) => {
   notify(userId, {
     type: "WALLET_TRANSFER",
     title: "Transfer Sent",
-    message: `Transferred ${roundedAmount.toFixed(4)} ETH to ${toAddress.slice(0, 10)}...`,
+    message: `Transferred ${roundedAmount.toFixed(4)} USDC to ${toAddress.slice(0, 10)}...`,
   });
 
   res.json({

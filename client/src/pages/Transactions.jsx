@@ -84,7 +84,7 @@ export default function Transactions() {
         </div>
 
         <div className="p-5 rounded-2xl bg-white dark:bg-[#0A0A0A] border border-slate-200 dark:border-white/[0.08] shadow-sm dark:shadow-xl">
-          <p className="text-slate-500 dark:text-slate-400 text-[10px] uppercase tracking-wider">Total ETH Volume</p>
+          <p className="text-slate-500 dark:text-slate-400 text-[10px] uppercase tracking-wider">Total USDC Volume</p>
           <p className="text-2xl font-bold text-[#6366F1] dark:text-[#818CF8] mt-1.5">{formatEth(stats.volume)}</p>
           <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">Gross protocol flow</p>
         </div>

@@ -1,5 +1,9 @@
-export function formatEth(amount) {
-  return `${Number(amount ?? 0).toFixed(4)} ETH`;
+export function formatEth(amount, token = "USDC") {
+  return `${Number(amount ?? 0).toFixed(4)} ${token}`;
+}
+
+export function formatUsdc(amount) {
+  return `${Number(amount ?? 0).toFixed(2)} USDC`;
 }
 
 export function formatDate(iso, opts) {

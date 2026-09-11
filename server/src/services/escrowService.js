@@ -216,7 +216,7 @@ export function fundEscrow(agreementId, clientId, { onChainTx } = {}) {
   notify(agreement.freelancerId, {
     type: "STREAM_CREATED",
     title: "Payment stream funded",
-    message: `Escrow stream for "${agreement.title}" has been funded (${agreement.budget} ETH). Work can begin.`,
+    message: `Escrow stream for "${agreement.title}" has been funded (${agreement.budget} USDC). Work can begin.`,
     agreementId,
   });
 
@@ -405,7 +405,7 @@ export function cancelStream(agreementId, clientId) {
   notify(agreement.freelancerId, {
     type: "STREAM_CANCELLED",
     title: "Stream cancelled & settled",
-    message: `${agreement.title}: stream was cancelled. ${unwithdrawnEarned.toFixed(4)} ETH earned was transferred to your wallet.`,
+    message: `${agreement.title}: stream was cancelled. ${unwithdrawnEarned.toFixed(4)} USDC earned was transferred to your wallet.`,
     agreementId,
   });
 
@@ -488,14 +488,14 @@ export function withdrawStreamed(agreementId, userId, requestedAmount) {
   notify(agreement.freelancerId, {
     type: "STREAM_CLAIMED",
     title: "Stream payout claimed",
-    message: `You successfully claimed ${roundedAmount.toFixed(4)} ETH from "${agreement.title}". Attestation #${attestation.id} minted.`,
+    message: `You successfully claimed ${roundedAmount.toFixed(4)} USDC from "${agreement.title}". Attestation #${attestation.id} minted.`,
     agreementId,
   });
 
   notify(agreement.clientId, {
     type: "STREAM_CLAIMED",
     title: "Worker claimed streamed payout",
-    message: `${freelancer?.name || "Worker"} claimed ${roundedAmount.toFixed(4)} ETH from "${agreement.title}".`,
+    message: `${freelancer?.name || "Worker"} claimed ${roundedAmount.toFixed(4)} USDC from "${agreement.title}".`,
     agreementId,
   });
 

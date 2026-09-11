@@ -108,7 +108,7 @@ export default function FreelancerDashboard() {
             </div>
             <h3 className="text-base font-semibold text-slate-900 dark:text-white mb-1.5">Wallet &amp; Liquidity Hub</h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-normal">
-              Manage your localnet ETH balances, claim accrued streaming earnings, or transfer funds.
+              Manage your wallet balances, claim accrued streaming earnings, or transfer funds.
             </p>
           </div>
           <Link

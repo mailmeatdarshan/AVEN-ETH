@@ -130,7 +130,7 @@ export default function Wallet() {
   return (
     <AppLayout
       title="Wallet & Liquidity Hub"
-      subtitle="Manage your testnet ETH funds, stream liquidity reserves, and on-chain deposits."
+      subtitle="Manage your testnet funds, stream liquidity reserves, and on-chain deposits."
     >
       <div className="space-y-8">
         {/* Main Wallet Hero Card */}
@@ -316,7 +316,7 @@ export default function Wallet() {
         open={depositOpen}
         onClose={() => setDepositOpen(false)}
         title="Deposit Funds to Wallet (Faucet)"
-        subtitle="Mint testnet ETH to fund payment streams or test withdrawals."
+        subtitle="Mint testnet USDC to fund payment streams or test withdrawals."
         footer={
           <>
             <button className="btn-secondary" onClick={() => setDepositOpen(false)} disabled={depositing}>
@@ -324,7 +324,7 @@ export default function Wallet() {
             </button>
             <button className="btn-primary !bg-[#6366F1]" onClick={handleDeposit} disabled={depositing}>
               {depositing && <span className="h-3.5 w-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin mr-2" />}
-              {depositing ? "Mining Deposit Block..." : `Deposit ${depositAmount || 0} ETH`}
+              {depositing ? "Mining Deposit Block..." : `Deposit ${depositAmount || 0} USDC`}
             </button>
           </>
         }
@@ -344,14 +344,14 @@ export default function Wallet() {
                       : "bg-slate-100 dark:bg-[#171717] text-slate-700 dark:text-slate-300 border-slate-200 dark:border-white/[0.08] hover:bg-slate-200 dark:hover:bg-[#1F1F1F]"
                   }`}
                 >
-                  +{preset} ETH
+                  +{preset} USDC
                 </button>
               ))}
             </div>
           </div>
 
           <div>
-            <label className="field-label">Custom Amount (ETH)</label>
+            <label className="field-label">Custom Amount (USDC)</label>
             <input
               type="number"
               step="0.01"
@@ -376,7 +376,7 @@ export default function Wallet() {
         open={transferOpen}
         onClose={() => setTransferOpen(false)}
         title="Transfer Funds"
-        subtitle="Send ETH to another simulated address or recipient."
+        subtitle="Send USDC to another simulated address or recipient."
         footer={
           <>
             <button className="btn-secondary" onClick={() => setTransferOpen(false)} disabled={transferring}>
@@ -404,7 +404,7 @@ export default function Wallet() {
 
           <div>
             <div className="flex justify-between items-center mb-1">
-              <label className="field-label !mb-0">Transfer Amount (ETH)</label>
+              <label className="field-label !mb-0">Transfer Amount (USDC)</label>
               <span className="text-xs text-slate-500 dark:text-slate-400 font-mono">
                 Available: <strong className="text-slate-900 dark:text-white">{formatEth(wallet.availableBalance)}</strong>
               </span>

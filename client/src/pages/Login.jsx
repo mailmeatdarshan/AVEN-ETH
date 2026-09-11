@@ -4,8 +4,8 @@ import { useAuth } from "../context/AuthContext.jsx";
 import SidekickLogo from "../components/SidekickLogo.jsx";
 
 const DEMO_ACCOUNTS = [
-  { role: "CLIENT", label: "Client Workspace", name: "Sarah Chen", email: "client@aven.dev", balance: "25.0 ETH" },
-  { role: "FREELANCER", label: "Contributor Workspace", name: "Marcus Rivera", email: "freelancer@aven.dev", balance: "0.0 ETH" },
+  { role: "CLIENT", label: "Client Workspace", name: "Sarah Chen", email: "client@aven.dev", balance: "25.0 USDC" },
+  { role: "FREELANCER", label: "Contributor Workspace", name: "Marcus Rivera", email: "freelancer@aven.dev", balance: "0.0 USDC" },
 ];
 
 export default function Login() {

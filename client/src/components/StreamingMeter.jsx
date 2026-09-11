@@ -76,7 +76,7 @@ export default function StreamingMeter({
         </div>
 
         <div className="text-xs text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-white/[0.06] border border-slate-200 dark:border-white/[0.08] px-3 py-1 rounded-full">
-          Flow Rate: <span className="text-slate-900 dark:text-white font-medium">{ratePerSec > 0 ? `${formatEth(ratePerHr)}/hr` : "0.00 ETH/hr"}</span>
+          Flow Rate: <span className="text-slate-900 dark:text-white font-medium">{ratePerSec > 0 ? `${formatEth(ratePerHr)}/hr` : "0.0000 USDC/hr"}</span>
         </div>
       </div>
 

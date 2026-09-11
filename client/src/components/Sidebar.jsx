@@ -128,7 +128,7 @@ export function SidebarContent({ onNavigate }) {
       <div className="p-3 mx-3 mb-2 rounded-xl bg-slate-50 dark:bg-[#0A0A0A] border border-slate-200 dark:border-white/[0.08] flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-2">
           <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="text-[10px] font-mono uppercase tracking-wider text-slate-600 dark:text-slate-400">ETH LOCALNET</span>
+          <span className="text-[10px] font-mono uppercase tracking-wider text-slate-600 dark:text-slate-400">BASE SEPOLIA</span>
         </div>
         <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-semibold">ONLINE</span>
       </div>

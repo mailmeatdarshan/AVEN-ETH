@@ -15,6 +15,6 @@ export function nowIso() {
   return new Date().toISOString();
 }
 
-export function formatEth(amount) {
-  return `${Number(amount).toFixed(4)} ETH`;
+export function formatEth(amount, token = "USDC") {
+  return `${Number(amount).toFixed(4)} ${token}`;
 }

@@ -119,7 +119,7 @@ export default function Topbar({ title, subtitle, onMenuClick }) {
         ) : (
           <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-[#0A0A0A] border border-slate-200 dark:border-white/[0.08] text-[11px] font-mono text-slate-700 dark:text-slate-300">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span>ETH LOCALNET</span>
+            <span>BASE SEPOLIA</span>
           </div>
         )}
 
