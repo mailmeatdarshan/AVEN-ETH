@@ -252,6 +252,9 @@ export default function WorkSession() {
             <div className="bg-white dark:bg-black/50 p-3 rounded-xl font-mono text-xs text-emerald-600 dark:text-emerald-400 flex items-center justify-between border border-slate-200 dark:border-white/[0.05] overflow-x-auto">
               <code>aven-eth watch --stream {agreement.id}</code>
             </div>
+            <p className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+              Run in your local Git repository. (Alternative: <code className="text-slate-700 dark:text-slate-300">node cli/bin/aven-eth.js watch --stream {agreement.id}</code>)
+            </p>
           </div>
 
           {/* Work Mode Switcher */}

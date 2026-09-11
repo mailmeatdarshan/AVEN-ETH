@@ -197,7 +197,7 @@ async function runWatcher({ streamId, apiUrl }) {
   try {
     const res = await apiRequest(apiUrl, `/agreements/${streamId}`, { token });
     agreementData = res.agreement;
-    console.log("\x1b[32m%s\x1b[0m", `  ✓ Linked to Stream: "${agreementData.title}" (Budget: ${agreementData.budget} ETH)`);
+    console.log("\x1b[32m%s\x1b[0m", `  ✓ Linked to Stream: "${agreementData.title}" (Budget: ${agreementData.budget} USDC)`);
     if (baseCommit) {
       console.log("\x1b[90m%s\x1b[0m", `  ✓ Base Commit Hash Locked: ${baseCommit.substring(0, 10)}...`);
     }
@@ -248,7 +248,7 @@ async function runWatcher({ streamId, apiUrl }) {
     console.log(`  Commits (Session) : \x1b[1m${git.commitsCount}\x1b[0m`);
     console.log(`  Files Modified    : ${git.changedFilesCount}`);
     console.log(`  Cumulative Diffs  : \x1b[32m+${git.linesAdded}\x1b[0m / \x1b[31m-${git.linesDeleted}\x1b[0m`);
-    console.log(`  Accrued Payout    : \x1b[32m\x1b[1m${liveEarned.toFixed(6)} ETH\x1b[0m (Rate: ${(ratePerSecond * 3600).toFixed(4)} ETH/hr)`);
+    console.log(`  Accrued Payout    : \x1b[32m\x1b[1m${liveEarned.toFixed(6)} USDC\x1b[0m (Rate: ${(ratePerSecond * 3600).toFixed(4)} USDC/hr)`);
     console.log(`  Privacy Filter    : \x1b[32mActive (.avenignore)\x1b[0m`);
     console.log(`  Proof Hash        : \x1b[35m${reportHash}\x1b[0m`);
     console.log(`\n  \x1b[90mWatching local repository changes... (Press Ctrl+C to stop & finalize proof)\x1b[0m`);
@@ -292,7 +292,7 @@ async function runWatcher({ streamId, apiUrl }) {
         },
       });
       const finalEarned = (activeSeconds * ratePerSecond).toFixed(6);
-      console.log("\x1b[32m%s\x1b[0m", `  ✓ Session stopped cleanly. ${finalEarned} ETH accrued and available to claim!`);
+      console.log("\x1b[32m%s\x1b[0m", `  ✓ Session stopped cleanly. ${finalEarned} USDC accrued and available to claim!`);
       console.log("\x1b[32m%s\x1b[0m", `  ✓ Cryptographic proof recorded on AVEN-ETH ledger.`);
     } catch (err) {
       console.log("\x1b[33m%s\x1b[0m", `  Session stopped: ${err.message}`);
