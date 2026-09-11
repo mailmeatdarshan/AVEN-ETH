@@ -10,7 +10,11 @@ export const BASE_SEPOLIA_NETWORK = {
     symbol: "ETH",
     decimals: 18,
   },
-  rpcUrls: ["https://sepolia.base.org"],
+  rpcUrls: [
+    "https://sepolia.base.org",
+    "https://base-sepolia-rpc.publicnode.com",
+    "https://base-sepolia.blockpi.network/v1/rpc/public",
+  ],
   blockExplorerUrls: ["https://sepolia.basescan.org"],
 };
 

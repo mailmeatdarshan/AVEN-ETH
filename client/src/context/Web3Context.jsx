@@ -10,6 +10,36 @@ import {
 
 const Web3Context = createContext(null);
 
+/**
+ * Safely resolves the active MetaMask provider, handling:
+ * 1. Multi-wallet environments (e.g. Phantom, Coinbase Wallet, Brave Wallet alongside MetaMask)
+ * 2. EIP-6963 / window.ethereum.providers array
+ * 3. Fallback to window.ethereum
+ */
+export function getEthereumProvider() {
+  if (typeof window === "undefined") return null;
+
+  // Case 1: Multiple wallets injected into window.ethereum.providers
+  if (window.ethereum?.providers?.length) {
+    const primaryMetaMask = window.ethereum.providers.find(
+      (p) => p.isMetaMask && !p.isPhantom && !p.isBraveWallet && !p.isCoinbaseWallet
+    );
+    if (primaryMetaMask) return primaryMetaMask;
+
+    const anyMetaMask = window.ethereum.providers.find((p) => p.isMetaMask);
+    if (anyMetaMask) return anyMetaMask;
+
+    return window.ethereum.providers[0];
+  }
+
+  // Case 2: Standard single injected window.ethereum
+  if (window.ethereum) {
+    return window.ethereum;
+  }
+
+  return null;
+}
+
 export function Web3Provider({ children }) {
   const [account, setAccount] = useState(null);
   const [chainId, setChainId] = useState(null);
@@ -17,8 +47,8 @@ export function Web3Provider({ children }) {
   const [usdcBalance, setUsdcBalance] = useState("0.00");
   const [isConnecting, setIsConnecting] = useState(false);
   const [txPending, setTxPending] = useState(false);
+  const [hasMetaMask, setHasMetaMask] = useState(() => Boolean(getEthereumProvider()));
 
-  const hasMetaMask = typeof window !== "undefined" && Boolean(window.ethereum);
   const isBaseSepolia = chainId === BASE_SEPOLIA_CHAIN_ID || chainId === BASE_SEPOLIA_CHAIN_ID_HEX;
 
   // Format short address: 0xd669...ad57
@@ -28,11 +58,12 @@ export function Web3Provider({ children }) {
 
   // 1. Fetch Balances from Base Sepolia
   const fetchBalances = useCallback(async (walletAddress) => {
-    if (!walletAddress || !hasMetaMask) return;
+    const provider = getEthereumProvider();
+    if (!walletAddress || !provider) return;
 
     try {
       // 1. Fetch Native ETH Balance
-      const balanceHex = await window.ethereum.request({
+      const balanceHex = await provider.request({
         method: "eth_getBalance",
         params: [walletAddress, "latest"],
       });
@@ -44,7 +75,7 @@ export function Web3Provider({ children }) {
       const paddedAddress = walletAddress.toLowerCase().replace("0x", "").padStart(64, "0");
       const data = `0x70a08231${paddedAddress}`;
 
-      const usdcHex = await window.ethereum.request({
+      const usdcHex = await provider.request({
         method: "eth_call",
         params: [
           {
@@ -62,34 +93,67 @@ export function Web3Provider({ children }) {
     } catch (err) {
       console.warn("Could not fetch on-chain balances:", err.message);
     }
-  }, [hasMetaMask]);
+  }, []);
 
-  // 2. Auto-detect currently connected account and chain
+  // 2. Auto-detect currently connected account and chain with polling & event listeners
   useEffect(() => {
-    if (!hasMetaMask) return;
+    function initProvider() {
+      const provider = getEthereumProvider();
+      if (!provider) return;
 
-    // Check currently connected chain
-    window.ethereum
-      .request({ method: "eth_chainId" })
-      .then((hexId) => {
-        setChainId(parseInt(hexId, 16));
-      })
-      .catch(() => {});
+      setHasMetaMask(true);
 
-    // Check if user is already connected
-    window.ethereum
-      .request({ method: "eth_accounts" })
-      .then((accounts) => {
-        if (accounts && accounts.length > 0) {
-          setAccount(accounts[0]);
-          fetchBalances(accounts[0]);
-        }
-      })
-      .catch(() => {});
+      // Check currently connected chain
+      provider
+        .request({ method: "eth_chainId" })
+        .then((hexId) => {
+          setChainId(parseInt(hexId, 16));
+        })
+        .catch(() => {});
 
-    // Listen to account changes
+      // Check if user is already connected
+      provider
+        .request({ method: "eth_accounts" })
+        .then((accounts) => {
+          if (accounts && accounts.length > 0) {
+            setAccount(accounts[0]);
+            fetchBalances(accounts[0]);
+          }
+        })
+        .catch(() => {});
+    }
+
+    initProvider();
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("ethereum#initialized", initProvider, { once: true });
+    }
+
+    const interval = setInterval(() => {
+      if (getEthereumProvider()) {
+        initProvider();
+        clearInterval(interval);
+      }
+    }, 400);
+
+    const timeout = setTimeout(() => clearInterval(interval), 3000);
+
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("ethereum#initialized", initProvider);
+      }
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, [fetchBalances]);
+
+  // Listen to account and chain changes
+  useEffect(() => {
+    const provider = getEthereumProvider();
+    if (!provider) return;
+
     const handleAccountsChanged = (accounts) => {
-      if (accounts.length > 0) {
+      if (accounts && accounts.length > 0) {
         setAccount(accounts[0]);
         fetchBalances(accounts[0]);
       } else {
@@ -99,41 +163,66 @@ export function Web3Provider({ children }) {
       }
     };
 
-    // Listen to chain changes
     const handleChainChanged = (hexId) => {
       const newChainId = parseInt(hexId, 16);
       setChainId(newChainId);
       if (account) fetchBalances(account);
     };
 
-    window.ethereum.on("accountsChanged", handleAccountsChanged);
-    window.ethereum.on("chainChanged", handleChainChanged);
+    provider.on?.("accountsChanged", handleAccountsChanged);
+    provider.on?.("chainChanged", handleChainChanged);
 
     return () => {
-      window.ethereum.removeListener("accountsChanged", handleAccountsChanged);
-      window.ethereum.removeListener("chainChanged", handleChainChanged);
+      provider.removeListener?.("accountsChanged", handleAccountsChanged);
+      provider.removeListener?.("chainChanged", handleChainChanged);
     };
-  }, [hasMetaMask, account, fetchBalances]);
+  }, [account, fetchBalances, hasMetaMask]);
 
   // 3. Connect Wallet
   async function connectWallet() {
-    if (!hasMetaMask) {
+    const provider = getEthereumProvider();
+    if (!provider) {
+      if (typeof window !== "undefined") {
+        const isSecure =
+          window.location.protocol === "https:" ||
+          window.location.hostname === "localhost" ||
+          window.location.hostname === "127.0.0.1";
+        if (!isSecure) {
+          throw new Error(
+            `MetaMask disables extension injection on local network HTTP (${window.location.host}). Please open via localhost or use HTTPS.`
+          );
+        }
+      }
       window.open("https://metamask.io/download/", "_blank");
-      throw new Error("MetaMask not detected! Please install MetaMask to continue.");
+      throw new Error(
+        "MetaMask not detected! If installed, please click the MetaMask fox icon in your browser toolbar to activate it."
+      );
     }
 
     setIsConnecting(true);
     try {
-      const accounts = await window.ethereum.request({
+      const accounts = await provider.request({
         method: "eth_requestAccounts",
       });
       if (accounts && accounts.length > 0) {
         setAccount(accounts[0]);
-        const hexId = await window.ethereum.request({ method: "eth_chainId" });
+        setHasMetaMask(true);
+        const hexId = await provider.request({ method: "eth_chainId" });
         setChainId(parseInt(hexId, 16));
         await fetchBalances(accounts[0]);
         return accounts[0];
       }
+      throw new Error("No accounts received from MetaMask.");
+    } catch (err) {
+      if (err.code === -32002) {
+        throw new Error(
+          "MetaMask connection prompt is already open! Please click the MetaMask extension icon in your browser toolbar to approve."
+        );
+      }
+      if (err.code === 4001) {
+        throw new Error("Connection cancelled in MetaMask.");
+      }
+      throw err;
     } finally {
       setIsConnecting(false);
     }
@@ -148,26 +237,36 @@ export function Web3Provider({ children }) {
 
   // 5. Switch to Base Sepolia Network (1-Click)
   async function switchToBaseSepolia() {
-    if (!hasMetaMask) return;
+    const provider = getEthereumProvider();
+    if (!provider) {
+      throw new Error("MetaMask not detected. Please install or activate MetaMask.");
+    }
 
     try {
-      await window.ethereum.request({
+      await provider.request({
         method: "wallet_switchEthereumChain",
         params: [{ chainId: BASE_SEPOLIA_CHAIN_ID_HEX }],
       });
       setChainId(BASE_SEPOLIA_CHAIN_ID);
     } catch (switchError) {
       // Error code 4902: network not added to MetaMask yet
-      if (switchError.code === 4902) {
+      if (switchError.code === 4902 || switchError.data?.originalError?.code === 4902) {
         try {
-          await window.ethereum.request({
+          await provider.request({
             method: "wallet_addEthereumChain",
             params: [BASE_SEPOLIA_NETWORK],
           });
           setChainId(BASE_SEPOLIA_CHAIN_ID);
         } catch (addError) {
+          if (addError.code === 4001) {
+            throw new Error("Adding Base Sepolia was cancelled in MetaMask.");
+          }
           throw new Error(`Failed to add Base Sepolia: ${addError.message}`);
         }
+      } else if (switchError.code === 4001) {
+        throw new Error("Network switch cancelled in MetaMask.");
+      } else if (switchError.code === -32002) {
+        throw new Error("Network request is already pending in MetaMask. Please check the extension icon.");
       } else {
         throw switchError;
       }
@@ -176,7 +275,8 @@ export function Web3Provider({ children }) {
 
   // 6. Free Faucet: Mint 500 mUSDC for testing
   async function mintFaucetUSDC(amount = 500) {
-    if (!account) throw new Error("Please connect your wallet first.");
+    const provider = getEthereumProvider();
+    if (!account || !provider) throw new Error("Please connect your wallet first.");
     if (!isBaseSepolia) {
       await switchToBaseSepolia();
     }
@@ -189,7 +289,7 @@ export function Web3Provider({ children }) {
       const paddedAmount = amountUnits.toString(16).padStart(64, "0");
       const data = `0x40c10f19${paddedTo}${paddedAmount}`;
 
-      const txHash = await window.ethereum.request({
+      const txHash = await provider.request({
         method: "eth_sendTransaction",
         params: [
           {
@@ -204,6 +304,10 @@ export function Web3Provider({ children }) {
       await waitForReceipt(txHash);
       await fetchBalances(account);
       return txHash;
+    } catch (err) {
+      if (err.code === 4001) throw new Error("Faucet minting transaction was cancelled.");
+      if (err.code === -32002) throw new Error("Transaction confirmation already pending in MetaMask.");
+      throw err;
     } finally {
       setTxPending(false);
     }
@@ -217,7 +321,8 @@ export function Web3Provider({ children }) {
     withdrawableCapPercent = 75,
     externalAgreementId,
   }) {
-    if (!account) throw new Error("Please connect your wallet first.");
+    const provider = getEthereumProvider();
+    if (!account || !provider) throw new Error("Please connect your wallet first.");
     if (!isBaseSepolia) {
       await switchToBaseSepolia();
     }
@@ -234,7 +339,7 @@ export function Web3Provider({ children }) {
       const paddedBudget = budgetUnits.toString(16).padStart(64, "0");
       const approveData = `0x095ea7b3${paddedSpender}${paddedBudget}`;
 
-      const approveTxHash = await window.ethereum.request({
+      const approveTxHash = await provider.request({
         method: "eth_sendTransaction",
         params: [
           {
@@ -270,7 +375,7 @@ export function Web3Provider({ children }) {
 
       const streamData = `0xb8f1eb80${paddedFreelancer}${paddedToken}${paddedBudget}${paddedDuration}${paddedCap}${cleanAgrId}`;
 
-      const fundTxHash = await window.ethereum.request({
+      const fundTxHash = await provider.request({
         method: "eth_sendTransaction",
         params: [
           {
@@ -289,6 +394,10 @@ export function Web3Provider({ children }) {
         receipt,
         basescanUrl: `https://sepolia.basescan.org/tx/${fundTxHash}`,
       };
+    } catch (err) {
+      if (err.code === 4001) throw new Error("Transaction was cancelled in MetaMask.");
+      if (err.code === -32002) throw new Error("Transaction request already pending in MetaMask.");
+      throw err;
     } finally {
       setTxPending(false);
     }
@@ -296,8 +405,11 @@ export function Web3Provider({ children }) {
 
   // Helper: Poll for transaction receipt
   async function waitForReceipt(txHash, maxAttempts = 30) {
+    const provider = getEthereumProvider();
+    if (!provider) throw new Error("Wallet provider disconnected.");
+
     for (let i = 0; i < maxAttempts; i++) {
-      const receipt = await window.ethereum.request({
+      const receipt = await provider.request({
         method: "eth_getTransactionReceipt",
         params: [txHash],
       });
