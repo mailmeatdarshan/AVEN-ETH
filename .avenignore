@@ -1,0 +1,7 @@
+# AVEN-ETH Privacy Protection Filter
+.env
+*.pem
+*.key
+secrets.*
+node_modules
+.git

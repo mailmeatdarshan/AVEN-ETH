@@ -5,7 +5,8 @@ import * as seed from "./seed.js";
 import { blockchain, resetBlockchain } from "../services/blockchainService.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DB_FILE = path.join(__dirname, "db.json");
+const LOCAL_DB_FILE = path.join(__dirname, "db.json");
+const DB_FILE = process.env.VERCEL ? path.join("/tmp", "aven_db.json") : LOCAL_DB_FILE;
 
 function deepClone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -64,9 +65,10 @@ class Collection {
 }
 
 function loadInitialData() {
-  if (persistenceEnabled && fs.existsSync(DB_FILE)) {
+  const targetFile = fs.existsSync(DB_FILE) ? DB_FILE : (fs.existsSync(LOCAL_DB_FILE) ? LOCAL_DB_FILE : null);
+  if (persistenceEnabled && targetFile) {
     try {
-      const raw = fs.readFileSync(DB_FILE, "utf8");
+      const raw = fs.readFileSync(targetFile, "utf8");
       const parsed = JSON.parse(raw);
       if (parsed && Array.isArray(parsed.users)) {
         if (Array.isArray(parsed.chain) && parsed.chain.length > 0) {
