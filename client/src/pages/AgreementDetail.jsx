@@ -118,7 +118,6 @@ export default function AgreementDetail() {
   const [disputing, setDisputing] = useState(false);
   const [startingProject, setStartingProject] = useState(false);
   const [onChainTx, setOnChainTx] = useState(null);
-  const [roleOverride, setRoleOverride] = useState(null);
 
   const {
     account,
@@ -185,9 +184,8 @@ export default function AgreementDetail() {
     (!isAgreementClient && user?.role === "FREELANCER")
   );
 
-  const effectiveRole = roleOverride || (isAgreementClient ? "CLIENT" : isAgreementFreelancer ? "FREELANCER" : user?.role || "CLIENT");
-  const isClient = effectiveRole === "CLIENT";
-  const isFreelancer = effectiveRole === "FREELANCER";
+  const isClient = isAgreementClient;
+  const isFreelancer = isAgreementFreelancer;
   const escrowActive = ["FUNDED", "IN_PROGRESS", "SUBMITTED", "REVISION_REQUESTED"].includes(
     agreement.status
   );
@@ -645,37 +643,9 @@ export default function AgreementDetail() {
 
           {/* Stream Actions & Controls */}
           <div className="p-6 rounded-2xl bg-white dark:bg-[#0A0A0A] border border-slate-200 dark:border-white/[0.08] shadow-sm dark:shadow-2xl space-y-3 font-mono">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                {isClient ? "Client Stream Controls" : "Worker / Contributor Controls"}
-              </p>
-              <div className="flex items-center gap-1 bg-slate-100 dark:bg-white/[0.06] p-0.5 rounded-lg text-[10px]">
-                <button
-                  type="button"
-                  onClick={() => setRoleOverride("CLIENT")}
-                  className={`px-2 py-0.5 rounded-md font-mono transition-all ${
-                    isClient
-                      ? "bg-[#6366F1] text-white font-bold shadow-sm"
-                      : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white"
-                  }`}
-                  title="View controls from Client perspective"
-                >
-                  Client View
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRoleOverride("FREELANCER")}
-                  className={`px-2 py-0.5 rounded-md font-mono transition-all ${
-                    !isClient
-                      ? "bg-[#6366F1] text-white font-bold shadow-sm"
-                      : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white"
-                  }`}
-                  title="View controls from Worker perspective"
-                >
-                  Worker View
-                </button>
-              </div>
-            </div>
+            <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
+              {isClient ? "Client Stream Actions" : "Worker Actions"}
+            </p>
 
             {isClient && (
               <>

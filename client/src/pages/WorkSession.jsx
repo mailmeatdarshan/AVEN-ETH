@@ -18,7 +18,6 @@ export default function WorkSession() {
   const [busy, setBusy] = useState(false);
   const [claiming, setClaiming] = useState(false);
   const [liveSeconds, setLiveSeconds] = useState(0);
-  const [roleOverride, setRoleOverride] = useState(null);
   const tickRef = useRef(null);
 
   // Work Mode: "CODE" (Git-based) vs "GENERAL" (Data entry, design, writing, research)
@@ -181,8 +180,7 @@ export default function WorkSession() {
     (!isAgreementClient && user?.role === "FREELANCER")
   );
 
-  const effectiveRole = roleOverride || (isAgreementClient ? "CLIENT" : "FREELANCER");
-  const isClient = effectiveRole === "CLIENT";
+  const isClient = isAgreementClient;
 
   const showSubmissionForm = agreement.status === "IN_PROGRESS" || agreement.status === "REVISION_REQUESTED";
   const isRevision = agreement.submission?.status === "REVISION_REQUESTED";
@@ -202,15 +200,15 @@ export default function WorkSession() {
         &larr; Back to stream
       </Link>
 
-      {/* Role / Perspective Banner */}
-      <div className="mb-6 p-4 rounded-2xl bg-white dark:bg-[#0A0A0A] border border-slate-200 dark:border-white/[0.08] shadow-sm dark:shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 font-mono">
-        <div className="flex items-center gap-3">
-          <div className={`h-9 w-9 rounded-xl flex items-center justify-center text-sm font-bold ${isClient ? "bg-indigo-500/10 text-[#6366F1] dark:text-[#818CF8]" : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"}`}>
-            {isClient ? "👁️" : "⚡"}
+      {/* Client Observer Mode Banner */}
+      {isClient && (
+        <div className="mb-6 p-4 rounded-2xl bg-white dark:bg-[#0A0A0A] border border-slate-200 dark:border-white/[0.08] shadow-sm dark:shadow-xl flex items-center gap-3 font-mono">
+          <div className="h-9 w-9 rounded-xl flex items-center justify-center text-sm font-bold bg-indigo-500/10 text-[#6366F1] dark:text-[#818CF8]">
+            👁️
           </div>
           <div>
             <p className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              {isClient ? "Client Observer Mode: Live Contributor Telemetry" : "Contributor Work Session & Timer"}
+              Client Observer Mode: Live Contributor Telemetry
               {status === "RUNNING" && (
                 <span className="flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-2 py-0.5 rounded-full font-semibold">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-ping" />
@@ -219,41 +217,11 @@ export default function WorkSession() {
               )}
             </p>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 font-sans">
-              {isClient
-                ? `Real-time proof of work telemetry, Git Merkle proofs, and earned streaming payments for ${agreement.freelancer?.name || "contributor"}.`
-                : "Active work tracking, cryptographic proof recording, and payment streaming for this agreement."}
+              Real-time proof of work telemetry, Git Merkle proofs, and earned streaming payments for {agreement.freelancer?.name || "contributor"}.
             </p>
           </div>
         </div>
-
-        <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-white/[0.06] p-1 rounded-xl text-[10px]">
-          <span className="text-slate-500 dark:text-slate-400 text-[10px] uppercase font-semibold px-1">View as:</span>
-          <button
-            type="button"
-            onClick={() => setRoleOverride("CLIENT")}
-            className={`px-2.5 py-1 rounded-lg transition-all ${
-              isClient
-                ? "bg-[#6366F1] text-white font-bold shadow-sm"
-                : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white"
-            }`}
-            title="Switch to Client perspective"
-          >
-            Client View
-          </button>
-          <button
-            type="button"
-            onClick={() => setRoleOverride("FREELANCER")}
-            className={`px-2.5 py-1 rounded-lg transition-all ${
-              !isClient
-                ? "bg-[#6366F1] text-white font-bold shadow-sm"
-                : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white"
-            }`}
-            title="Switch to Contributor perspective"
-          >
-            Worker View
-          </button>
-        </div>
-      </div>
+      )}
 
       <div className="grid lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
