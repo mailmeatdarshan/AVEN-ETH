@@ -70,8 +70,12 @@ export default function WorkSession() {
     return () => clearInterval(tickRef.current);
   }, [agreement]);
 
-  function copyCliCommand() {
-    const cmd = `aven-eth watch --stream ${agreement?.id}`;
+  const isLocalhost = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+  const apiFlag = isLocalhost ? "" : ` --api ${window.location.origin}/api`;
+  const cliCommand = `aven-eth watch --stream ${agreement?.id}${apiFlag}`;
+
+  function copyCliCommand(text) {
+    const cmd = text || cliCommand;
     if (navigator.clipboard) {
       navigator.clipboard.writeText(cmd);
       setCopiedCli(true);
@@ -235,26 +239,32 @@ export default function WorkSession() {
           )}
 
           {/* Terminal CLI Command Box */}
-          <div className="p-4 rounded-2xl bg-slate-100 dark:bg-[#050505] border border-slate-200 dark:border-white/[0.08] text-slate-900 dark:text-white space-y-2 shadow-sm dark:shadow-xl">
+          <div className="p-4 rounded-2xl bg-slate-100 dark:bg-[#050505] border border-slate-200 dark:border-white/[0.08] text-slate-900 dark:text-white space-y-2.5 shadow-sm dark:shadow-xl">
             <div className="flex items-center justify-between text-xs font-mono text-slate-500 dark:text-slate-400">
               <span className="flex items-center gap-2">
                 <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                Sidekick Session Watcher CLI
+                <span>Sidekick Git Proof Watcher CLI</span>
+                <span className="px-1.5 py-0.5 rounded text-[10px] bg-indigo-500/10 dark:bg-indigo-500/20 text-[#6366F1] dark:text-[#818CF8] font-bold">OPTIONAL</span>
               </span>
               <button
                 type="button"
-                onClick={copyCliCommand}
+                onClick={() => copyCliCommand(cliCommand)}
                 className="text-[#6366F1] dark:text-[#818CF8] hover:text-slate-900 dark:hover:text-white font-mono transition-colors font-semibold"
               >
                 {copiedCli ? "✓ Command Copied!" : "Copy CLI Command"}
               </button>
             </div>
             <div className="bg-white dark:bg-black/50 p-3 rounded-xl font-mono text-xs text-emerald-600 dark:text-emerald-400 flex items-center justify-between border border-slate-200 dark:border-white/[0.05] overflow-x-auto">
-              <code>aven-eth watch --stream {agreement.id}</code>
+              <code>{cliCommand}</code>
             </div>
-            <p className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
-              Run in your local Git repository. (Alternative: <code className="text-slate-700 dark:text-slate-300">node cli/bin/aven-eth.js watch --stream {agreement.id}</code>)
-            </p>
+            <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400 space-y-1">
+              <p>
+                💡 <strong>Browser Mode:</strong> You can simply click <strong>"Start Tracking Work"</strong> below to track time directly from the web without running any CLI.
+              </p>
+              <p>
+                ⚡ <strong>On another PC:</strong> Run <code className="text-slate-700 dark:text-slate-300">npx github:mailmeatdarshan/AVEN-ETH watch --stream {agreement.id}{apiFlag}</code>
+              </p>
+            </div>
           </div>
 
           {/* Work Mode Switcher */}
