@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import AppLayout from "../layouts/AppLayout.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
-import { api } from "../api/client.js";
+import { api, getToken } from "../api/client.js";
 import { useToast } from "../context/ToastContext.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import Modal from "../components/Modal.jsx";
@@ -79,9 +79,38 @@ export default function WorkSession() {
     return () => clearInterval(tickRef.current);
   }, [agreement]);
 
+  const token = typeof window !== "undefined" ? getToken() : null;
+  const tokenFlag = token ? ` --token "${token}"` : "";
   const isLocalhost = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
   const apiFlag = isLocalhost ? "" : ` --api ${window.location.origin}/api`;
-  const cliCommand = `aven-eth watch --stream ${agreement?.id}${apiFlag}`;
+  const cliCommand = `aven-eth watch --stream ${agreement?.id}${apiFlag}${tokenFlag}`;
+  const localCliCommand = `node cli/bin/aven-eth.js watch --stream ${agreement?.id}${tokenFlag}`;
+
+  const isGitConnected = Boolean(
+    agreement?.session?.gitConnected ||
+    (agreement?.session?.baseCommit && agreement?.session?.baseCommit !== "0000000000000000000000000000000000000000") ||
+    agreement?.session?.lastSyncAt ||
+    (agreement?.session?.commitsCount && agreement?.session?.commitsCount > 0) ||
+    agreement?.session?.repoUrl
+  );
+
+  // Live auto-polling for Git Sentinel connection while waiting to connect
+  useEffect(() => {
+    if (!agreement?.id || isGitConnected) return;
+    const interval = setInterval(() => {
+      api
+        .agreement(agreement.id)
+        .then((res) => {
+          if (res.agreement?.session?.gitConnected) {
+            setAgreement(res.agreement);
+            toast.success("⚡ Git Sentinel connected via CLI! Work tracking unlocked.");
+            setGitModalOpen(false);
+          }
+        })
+        .catch(() => {});
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [agreement?.id, isGitConnected]);
 
   function copyCliCommand(text) {
     const cmd = text || cliCommand;
@@ -96,10 +125,18 @@ export default function WorkSession() {
     setLinkingGit(true);
     setGitLinkError(null);
     try {
+      const commitSha = (sha || gitCommitSha).trim();
+      if (!commitSha) {
+        throw new Error("Base commit SHA is required. Run 'git rev-parse HEAD' in your terminal and paste the commit hash.");
+      }
+      if (!/^[0-9a-fA-F]{7,64}$/.test(commitSha)) {
+        throw new Error("Invalid commit SHA format. Expected a 7 to 40 character hexadecimal hash from Git.");
+      }
+
       const payload = {
         branch: (b || gitBranchInput || "main").trim(),
-        repoUrl: (repoUrl !== undefined ? repoUrl : gitRepoUrl).trim() || "https://github.com/aven-eth/work-repo",
-        baseCommit: (sha || gitCommitSha).trim() || `0x${Math.random().toString(16).substring(2, 10)}${Date.now().toString(16)}000000000000000000000000000000000000`.substring(0, 66),
+        repoUrl: (repoUrl !== undefined ? repoUrl : gitRepoUrl).trim() || "",
+        baseCommit: commitSha,
       };
       const res = await api.connectGit(agreement.id, payload);
       setAgreement((prev) => ({ ...prev, session: res.session }));
@@ -228,13 +265,6 @@ export default function WorkSession() {
   const showSubmissionForm = agreement.status === "IN_PROGRESS" || agreement.status === "REVISION_REQUESTED";
   const isRevision = agreement.submission?.status === "REVISION_REQUESTED";
 
-  const isGitConnected = Boolean(
-    session?.gitConnected ||
-    (session?.baseCommit && session.baseCommit !== "0000000000000000000000000000000000000000") ||
-    session?.lastSyncAt ||
-    (session?.commitsCount && session.commitsCount > 0) ||
-    session?.repoUrl
-  );
 
   // Accurate metrics (only display active/accumulated git activity when connected)
   const commitsCount = isGitConnected
@@ -297,27 +327,29 @@ export default function WorkSession() {
           <div className="p-4 rounded-2xl bg-slate-100 dark:bg-[#050505] border border-slate-200 dark:border-white/[0.08] text-slate-900 dark:text-white space-y-2.5 shadow-sm dark:shadow-xl">
             <div className="flex items-center justify-between text-xs font-mono text-slate-500 dark:text-slate-400">
               <span className="flex items-center gap-2">
-                <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                <span className={`h-2 w-2 rounded-full ${isGitConnected ? "bg-emerald-500" : "bg-amber-500 animate-pulse"}`} />
                 <span>Sidekick Git Proof Watcher CLI</span>
-                <span className="px-1.5 py-0.5 rounded text-[10px] bg-indigo-500/10 dark:bg-indigo-500/20 text-[#6366F1] dark:text-[#818CF8] font-bold">OPTIONAL</span>
+                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${isGitConnected ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-indigo-500/10 text-[#6366F1] dark:text-[#818CF8]"}`}>
+                  {isGitConnected ? "CONNECTED" : "REQUIRED FOR CODE MODE"}
+                </span>
               </span>
               <button
                 type="button"
-                onClick={() => copyCliCommand(cliCommand)}
+                onClick={() => copyCliCommand(localCliCommand)}
                 className="text-[#6366F1] dark:text-[#818CF8] hover:text-slate-900 dark:hover:text-white font-mono transition-colors font-semibold"
               >
-                {copiedCli ? "✓ Command Copied!" : "Copy CLI Command"}
+                {copiedCli ? "✓ Command Copied!" : "Copy Local CLI Command"}
               </button>
             </div>
             <div className="bg-white dark:bg-black/50 p-3 rounded-xl font-mono text-xs text-emerald-600 dark:text-emerald-400 flex items-center justify-between border border-slate-200 dark:border-white/[0.05] overflow-x-auto">
-              <code>{cliCommand}</code>
+              <code>{localCliCommand}</code>
             </div>
             <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400 space-y-1">
               <p>
-                💡 <strong>Browser Mode:</strong> You can simply click <strong>"Start Tracking Work"</strong> below to track time directly from the web without running any CLI.
+                ⚡ <strong>Local Terminal:</strong> Run <code className="text-slate-700 dark:text-slate-300 select-all">{localCliCommand}</code> inside your local repo.
               </p>
               <p>
-                ⚡ <strong>On another PC:</strong> Run <code className="text-slate-700 dark:text-slate-300">npx github:mailmeatdarshan/AVEN-ETH watch --stream {agreement.id}{apiFlag}</code>
+                🌐 <strong>Global / NPX:</strong> Run <code className="text-slate-700 dark:text-slate-300 select-all">{cliCommand}</code>
               </p>
             </div>
           </div>
@@ -754,30 +786,47 @@ export default function WorkSession() {
               onClick={() => handleConnectGit()}
               disabled={linkingGit}
             >
-              {linkingGit ? "Linking..." : "Link Repository"}
+              {linkingGit ? "Verifying Commit..." : "Verify & Link Commit"}
             </button>
           </div>
         }
       >
         <div className="space-y-4 text-xs font-sans">
-          <div className="p-3.5 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20 text-indigo-900 dark:text-indigo-200">
-            <p className="font-semibold mb-1">⚡ Fast Track: Quick-Connect Local Git</p>
-            <p className="text-[11px] mb-3 text-slate-600 dark:text-slate-300">
-              For instant development &amp; testing, simulate or link a local Git session with 1 click.
+          {/* Method 1: Terminal Sentinel (Recommended & Fully Automated) */}
+          <div className="p-4 rounded-xl bg-indigo-50/70 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/30 text-slate-900 dark:text-slate-100">
+            <div className="flex items-center justify-between mb-2">
+              <span className="font-semibold text-xs flex items-center gap-2 text-indigo-700 dark:text-indigo-300">
+                <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                Method 1: Terminal Sentinel Watcher (Recommended)
+              </span>
+              <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 font-semibold">
+                Auto-Detects
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-600 dark:text-slate-300 mb-2">
+              Run this in your terminal inside your project folder. It uses your active login token to lock your Git HEAD and auto-connect instantly.
             </p>
-            <button
-              type="button"
-              className="w-full py-2 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-mono text-xs font-semibold uppercase tracking-wider transition-all shadow-sm"
-              onClick={() => handleConnectGit({ branch: "main" })}
-              disabled={linkingGit}
-            >
-              {linkingGit ? "Connecting..." : "⚡ Quick-Connect Local Git (main branch)"}
-            </button>
+            <div className="bg-slate-900 dark:bg-black/80 text-emerald-400 p-2.5 rounded-lg font-mono text-[11px] flex items-center justify-between gap-2 overflow-x-auto border border-slate-800">
+              <code className="select-all">{localCliCommand}</code>
+              <button
+                type="button"
+                className="flex-shrink-0 px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-mono transition-colors font-medium"
+                onClick={() => copyCliCommand(localCliCommand)}
+              >
+                {copiedCli ? "Copied!" : "Copy"}
+              </button>
+            </div>
+            <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-2 font-mono flex items-center gap-1.5">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500 animate-ping" />
+              Listening... as soon as the CLI starts in your terminal, this modal will auto-close and unlock work tracking.
+            </p>
           </div>
 
           <div className="relative flex py-1 items-center">
             <div className="flex-grow border-t border-slate-200 dark:border-white/[0.08]" />
-            <span className="flex-shrink mx-3 text-slate-400 font-mono text-[10px] uppercase">Or Link Repository Manually</span>
+            <span className="flex-shrink mx-3 text-slate-400 font-mono text-[10px] uppercase">
+              Or Method 2: Manual Git Verification
+            </span>
             <div className="flex-grow border-t border-slate-200 dark:border-white/[0.08]" />
           </div>
 
@@ -793,6 +842,20 @@ export default function WorkSession() {
           </div>
 
           <div>
+            <label className="field-label">Base Commit Hash (Required SHA)</label>
+            <input
+              type="text"
+              className="input font-mono text-xs"
+              placeholder="e.g. 7f8a9b2c... (run 'git rev-parse HEAD')"
+              value={gitCommitSha}
+              onChange={(e) => setGitCommitSha(e.target.value)}
+            />
+            <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 font-mono">
+              Run <code className="text-indigo-600 dark:text-indigo-400 font-bold">git rev-parse HEAD</code> in your repository terminal and paste the commit hash here.
+            </p>
+          </div>
+
+          <div>
             <label className="field-label">Repository URL (Optional)</label>
             <input
               type="text"
@@ -801,23 +864,6 @@ export default function WorkSession() {
               value={gitRepoUrl}
               onChange={(e) => setGitRepoUrl(e.target.value)}
             />
-          </div>
-
-          <div>
-            <label className="field-label">Base Commit Hash (Optional SHA)</label>
-            <input
-              type="text"
-              className="input font-mono text-xs"
-              placeholder="Auto-generated if left blank..."
-              value={gitCommitSha}
-              onChange={(e) => setGitCommitSha(e.target.value)}
-            />
-          </div>
-
-          <div className="p-3 rounded-xl bg-slate-50 dark:bg-[#141414] border border-slate-200 dark:border-white/[0.06] font-mono text-[11px] text-slate-500">
-            <p className="font-semibold text-slate-700 dark:text-slate-300 mb-1">Terminal Watcher CLI:</p>
-            <p>You can also link automatically by running:</p>
-            <code className="text-indigo-600 dark:text-indigo-400 block mt-1">{cliCommand}</code>
           </div>
 
           {gitLinkError && <p className="field-error">{gitLinkError}</p>}

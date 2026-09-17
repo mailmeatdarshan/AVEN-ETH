@@ -18,17 +18,29 @@ function parseArgs() {
   const command = args[0] || "help";
   let streamId = null;
   let apiUrl = DEFAULT_API_URL;
+  let token = null;
+  let email = null;
+  let password = null;
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--stream" || args[i] === "-s") {
       streamId = args[i + 1];
     }
-    if (args[i] === "--api") {
+    if (args[i] === "--api" || args[i] === "-a") {
       apiUrl = args[i + 1];
+    }
+    if (args[i] === "--token" || args[i] === "-t") {
+      token = args[i + 1];
+    }
+    if (args[i] === "--email" || args[i] === "-e") {
+      email = args[i + 1];
+    }
+    if (args[i] === "--password" || args[i] === "-p") {
+      password = args[i + 1];
     }
   }
 
-  return { command, streamId, apiUrl };
+  return { command, streamId, apiUrl, token, email, password };
 }
 
 function printBanner() {
@@ -184,7 +196,7 @@ function formatDuration(sec) {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-async function runWatcher({ streamId, apiUrl }) {
+async function runWatcher({ streamId, apiUrl, token: inputToken, email, password }) {
   if (!streamId) {
     console.error("\x1b[31m%s\x1b[0m", "Error: Stream ID is required. Example: aven-eth watch --stream agr_1");
     process.exit(1);
@@ -194,18 +206,42 @@ async function runWatcher({ streamId, apiUrl }) {
   checkAndInitGit();
   const baseCommit = getInitialBaseCommit();
 
-  console.log("\x1b[34m%s\x1b[0m", `  Authenticating with AVEN-ETH API at ${apiUrl}...`);
-  let token = null;
-  try {
-    const authRes = await apiRequest(apiUrl, "/auth/login", {
-      method: "POST",
-      body: { email: DEFAULT_EMAIL, password: DEFAULT_PASSWORD },
-    });
-    token = authRes.token;
-    console.log("\x1b[32m%s\x1b[0m", `  ✓ Authenticated as ${authRes.user.name} (${authRes.user.email})`);
-  } catch (err) {
-    console.error("\x1b[31m%s\x1b[0m", `  Authentication failed: ${err.message}`);
-    process.exit(1);
+  let token = inputToken || process.env.AVEN_TOKEN || null;
+  let currentUser = null;
+
+  if (token) {
+    console.log("\x1b[34m%s\x1b[0m", `  Authenticating with AVEN-ETH API via session token...`);
+    try {
+      const meRes = await apiRequest(apiUrl, "/auth/me", { token });
+      currentUser = meRes.user;
+      console.log("\x1b[32m%s\x1b[0m", `  ✓ Authenticated as ${currentUser?.name || "Contributor"} (${currentUser?.email || "active session"})`);
+    } catch (err) {
+      console.warn("\x1b[33m%s\x1b[0m", `  Session token invalid or expired: ${err.message}. Trying credentials...`);
+      token = null;
+    }
+  }
+
+  if (!token) {
+    const authEmail = email || process.env.AVEN_EMAIL || DEFAULT_EMAIL;
+    const authPassword = password || process.env.AVEN_PASSWORD || DEFAULT_PASSWORD;
+    console.log("\x1b[34m%s\x1b[0m", `  Authenticating with AVEN-ETH API at ${apiUrl} as ${authEmail}...`);
+    try {
+      const authRes = await apiRequest(apiUrl, "/auth/login", {
+        method: "POST",
+        body: { email: authEmail, password: authPassword },
+      });
+      token = authRes.token;
+      currentUser = authRes.user;
+      console.log("\x1b[32m%s\x1b[0m", `  ✓ Authenticated as ${currentUser?.name || "Contributor"} (${currentUser?.email || authEmail})`);
+    } catch (err) {
+      console.error("\x1b[31m%s\x1b[0m", `  Authentication failed: ${err.message}`);
+      if (err.message.includes("405") || err.message.includes("not reachable") || err.message.includes("ECONNREFUSED")) {
+        console.error("\x1b[33m%s\x1b[0m", `  👉 Is your local backend running? Start it with: npm run dev:server`);
+        console.error("\x1b[33m%s\x1b[0m", `  👉 If testing against local server, run: node cli/bin/aven-eth.js watch --stream ${streamId}`);
+        console.error("\x1b[33m%s\x1b[0m", `  👉 Or pass your web session token: --token "<token_from_web>"`);
+      }
+      process.exit(1);
+    }
   }
 
   console.log("\x1b[34m%s\x1b[0m", `  Connecting to Payment Stream #${streamId}...`);
@@ -220,6 +256,22 @@ async function runWatcher({ streamId, apiUrl }) {
   } catch (err) {
     console.error("\x1b[31m%s\x1b[0m", `  Stream lookup failed: ${err.message}`);
     process.exit(1);
+  }
+
+  // Connect Git Sentinel to stream
+  try {
+    const gitInit = getGitMetrics(baseCommit);
+    await apiRequest(apiUrl, `/agreements/${streamId}/work/git-connect`, {
+      method: "POST",
+      token,
+      body: {
+        branch: gitInit.branch,
+        baseCommit: gitInit.baseCommit,
+      },
+    });
+    console.log("\x1b[32m%s\x1b[0m", `  ✓ Cryptographic Git Sentinel attached & verified on-chain!`);
+  } catch (err) {
+    // Continue if already linked
   }
 
   // Start work session on server with base commit
@@ -321,23 +373,31 @@ function showHelp() {
   printBanner();
   console.log(`
   Usage:
-    aven-eth watch --stream <stream-id>   Start live Git activity watcher for a stream
-    aven-eth help                         Show this help guide
+    aven-eth watch --stream <stream-id> [options]
 
   Options:
-    --stream, -s  <stream-id>   The payment stream ID (e.g. agr_c9d09ada3837)
-    --api         <url>         AVEN-ETH API endpoint (default: http://localhost:4000/api)
+    --stream, -s   <stream-id>   The payment stream ID (e.g. agr_c9d09ada3837) [REQUIRED]
+    --api, -a      <url>         AVEN-ETH API endpoint (default: http://localhost:4000/api)
+    --token, -t    <jwt>         Session auth token from web dashboard
+    --email, -e    <email>       Contributor login email
+    --password, -p <password>    Contributor login password
 
   Examples:
-    aven-eth watch --stream agr_c9d09ada3837
+    # Watch locally with default credentials:
     node cli/bin/aven-eth.js watch --stream agr_c9d09ada3837
+
+    # Watch with session token:
+    node cli/bin/aven-eth.js watch --stream agr_c9d09ada3837 --token "<JWT>"
+
+    # Watch against deployed Vercel API:
+    node cli/bin/aven-eth.js watch --stream agr_c9d09ada3837 --api https://getsidekick.vercel.app/api --token "<JWT>"
   `);
 }
 
-const { command, streamId, apiUrl } = parseArgs();
+const { command, streamId, apiUrl, token, email, password } = parseArgs();
 
 if (command === "watch" || command === "start") {
-  runWatcher({ streamId, apiUrl });
+  runWatcher({ streamId, apiUrl, token, email, password });
 } else {
   showHelp();
 }
