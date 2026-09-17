@@ -652,113 +652,149 @@ export default function AgreementDetail() {
           </div>
 
           {/* Active Settlement Negotiation Card */}
-          {agreement.status === "SETTLEMENT_OFFERED" && agreement.settlement && (
-            <div className="p-6 rounded-2xl bg-gradient-to-br from-indigo-500/10 via-purple-500/5 to-transparent border border-indigo-500/30 shadow-sm dark:shadow-2xl space-y-5">
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="h-3 w-3 rounded-full bg-indigo-500 animate-pulse" />
-                  <h3 className="text-base font-semibold text-slate-900 dark:text-white font-sans">
-                    Active Partial Settlement Negotiation
-                  </h3>
-                </div>
-                <span className="text-xs font-mono px-2.5 py-1 rounded-full bg-indigo-50 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 font-semibold border border-indigo-200 dark:border-indigo-500/30">
-                  Proposed by {agreement.settlement.proposedBy === agreement.clientId ? "Client" : "Contributor"}
-                </span>
-              </div>
+          {agreement.status === "SETTLEMENT_OFFERED" && (agreement.settlement || agreement.settlementProposal) && (() => {
+            const settlement = agreement.settlement || agreement.settlementProposal;
+            const isProposedByClient = settlement.proposedBy === "CLIENT" || settlement.proposedBy === agreement.clientId || settlement.proposerId === agreement.clientId;
+            const isProposedByFreelancer = settlement.proposedBy === "FREELANCER" || settlement.proposedBy === agreement.freelancerId || settlement.proposerId === agreement.freelancerId;
+            const isAwaitingMyAction = (isFreelancer && isProposedByClient) || (isClient && isProposedByFreelancer);
+            const isMyProposal = (isClient && isProposedByClient) || (isFreelancer && isProposedByFreelancer);
+            const history = settlement.history || settlement.counterHistory || [];
 
-              <div className="grid sm:grid-cols-2 gap-4 font-mono text-xs">
-                <div className="p-4 rounded-xl bg-white dark:bg-[#141414] border border-emerald-500/30 space-y-1">
-                  <span className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400">
-                    Contributor Payout (Earned)
+            return (
+              <div className="p-6 rounded-2xl bg-gradient-to-br from-indigo-500/10 via-purple-500/5 to-transparent border border-indigo-500/30 shadow-sm dark:shadow-2xl space-y-5">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="h-3 w-3 rounded-full bg-indigo-500 animate-pulse" />
+                    <h3 className="text-base font-semibold text-slate-900 dark:text-white font-sans">
+                      Active Partial Settlement Negotiation
+                    </h3>
+                  </div>
+                  <span className="text-xs font-mono px-2.5 py-1 rounded-full bg-indigo-50 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 font-semibold border border-indigo-200 dark:border-indigo-500/30">
+                    Proposed by {isProposedByClient ? "Client" : "Contributor"}
                   </span>
-                  <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400">
-                    {formatEth(agreement.settlement.workerPayout)}
-                  </p>
-                  <p className="text-[11px] text-slate-500">
-                    ({Math.round((agreement.settlement.workerPayout / agreement.budget) * 100)}% of total budget)
-                  </p>
                 </div>
 
-                <div className="p-4 rounded-xl bg-white dark:bg-[#141414] border border-slate-200 dark:border-white/[0.08] space-y-1">
-                  <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">
-                    Client Refund (Returned to Vault)
-                  </span>
-                  <p className="text-xl font-bold text-slate-900 dark:text-white">
-                    {formatEth(agreement.settlement.clientRefund)}
-                  </p>
-                  <p className="text-[11px] text-slate-500">
-                    ({Math.round((agreement.settlement.clientRefund / agreement.budget) * 100)}% refund)
-                  </p>
-                </div>
-              </div>
+                <div className="grid sm:grid-cols-2 gap-4 font-mono text-xs">
+                  <div className="p-4 rounded-xl bg-white dark:bg-[#141414] border border-emerald-500/30 space-y-1">
+                    <span className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400">
+                      Contributor Payout (Earned)
+                    </span>
+                    <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400">
+                      {formatEth(settlement.workerPayout)}
+                    </p>
+                    <p className="text-[11px] text-slate-500">
+                      ({Math.round((settlement.workerPayout / agreement.budget) * 100)}% of total budget)
+                    </p>
+                  </div>
 
-              <div className="p-4 rounded-xl bg-slate-100 dark:bg-black/30 border border-slate-200 dark:border-white/[0.06] text-xs font-sans space-y-1">
-                <p className="font-semibold text-slate-700 dark:text-slate-300 font-mono text-[11px] uppercase tracking-wider">
-                  Proposer's Justification &amp; Rationale:
-                </p>
-                <p className="text-slate-600 dark:text-slate-300 italic">
-                  "{agreement.settlement.reason}"
-                </p>
-              </div>
-
-              {agreement.settlement.counterHistory?.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-[11px] font-mono font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                    Negotiation History ({agreement.settlement.counterHistory.length} previous offers)
-                  </p>
-                  <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
-                    {agreement.settlement.counterHistory.map((ch, idx) => (
-                      <div key={idx} className="p-3 rounded-lg bg-white dark:bg-[#141414] border border-slate-200 dark:border-white/[0.06] text-xs font-mono flex items-center justify-between">
-                        <div>
-                          <span className="font-semibold text-slate-800 dark:text-slate-200">
-                            {ch.proposedBy === agreement.clientId ? "Client" : "Contributor"}: {formatEth(ch.workerPayout)}
-                          </span>
-                          <p className="text-[10px] text-slate-500 truncate max-w-sm mt-0.5">"{ch.reason}"</p>
-                        </div>
-                        <span className="text-[10px] text-slate-400">{formatDate(ch.proposedAt)}</span>
-                      </div>
-                    ))}
+                  <div className="p-4 rounded-xl bg-white dark:bg-[#141414] border border-slate-200 dark:border-white/[0.08] space-y-1">
+                    <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">
+                      Client Refund (Returned to Vault)
+                    </span>
+                    <p className="text-xl font-bold text-slate-900 dark:text-white">
+                      {formatEth(settlement.clientRefund)}
+                    </p>
+                    <p className="text-[11px] text-slate-500">
+                      ({Math.round((settlement.clientRefund / agreement.budget) * 100)}% refund)
+                    </p>
                   </div>
                 </div>
-              )}
 
-              <div className="flex items-center gap-3 pt-2 flex-wrap">
-                {((isFreelancer && agreement.settlement.proposedBy === agreement.clientId) ||
-                  (isClient && agreement.settlement.proposedBy === agreement.freelancerId)) && (
-                  <>
+                <div className="p-4 rounded-xl bg-slate-100 dark:bg-black/30 border border-slate-200 dark:border-white/[0.06] text-xs font-sans space-y-1">
+                  <p className="font-semibold text-slate-700 dark:text-slate-300 font-mono text-[11px] uppercase tracking-wider">
+                    Proposer's Justification &amp; Rationale:
+                  </p>
+                  <p className="text-slate-600 dark:text-slate-300 italic">
+                    "{settlement.reason}"
+                  </p>
+                </div>
+
+                {history.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-[11px] font-mono font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                      Negotiation History ({history.length} offer{history.length === 1 ? "" : "s"})
+                    </p>
+                    <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                      {history.map((ch, idx) => (
+                        <div key={idx} className="p-3 rounded-lg bg-white dark:bg-[#141414] border border-slate-200 dark:border-white/[0.06] text-xs font-mono flex items-center justify-between">
+                          <div>
+                            <span className="font-semibold text-slate-800 dark:text-slate-200">
+                              {(ch.proposedBy === "CLIENT" || ch.proposerId === agreement.clientId) ? "Client" : "Contributor"}: {formatEth(ch.workerPayout)}
+                            </span>
+                            <p className="text-[10px] text-slate-500 truncate max-w-sm mt-0.5">"{ch.reason}"</p>
+                          </div>
+                          <span className="text-[10px] text-slate-400">{formatDate(ch.timestamp || ch.proposedAt)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {isMyProposal && (
+                  <div className="p-3 rounded-xl bg-indigo-50/50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20 text-xs text-indigo-900 dark:text-indigo-200 flex items-center justify-between flex-wrap gap-2">
+                    <p>
+                      ⏳ You proposed this split. Awaiting response from {isClient ? (agreement.freelancer?.name || "contributor") : (agreement.client?.name || "client")}.
+                    </p>
                     <button
-                      className="btn-primary flex-1 min-w-[160px] text-xs py-2.5 shadow-md shadow-indigo-500/20"
-                      onClick={handleAcceptSettlement}
-                      disabled={submittingAction}
-                    >
-                      {submittingAction ? "Processing..." : `Accept Settlement (${formatEth(agreement.settlement.workerPayout)})`}
-                    </button>
-                    <button
-                      className="btn-secondary flex-1 min-w-[140px] text-xs py-2.5"
+                      className="btn-secondary text-xs py-1.5 px-3"
                       onClick={() => {
-                        setCounterPayout(agreement.settlement.workerPayout);
+                        setCounterPayout(settlement.workerPayout);
                         setCounterOpen(true);
                       }}
-                      disabled={submittingAction}
                     >
-                      Counter-Offer Split
+                      Update Split Proposal
                     </button>
-                  </>
+                  </div>
                 )}
-                {isFreelancer && (
-                  <button
-                    className="btn-danger text-xs py-2.5 px-4"
-                    onClick={() => {
-                      setDisputeReason("Rejecting partial settlement. Requesting full dispute mediation with cryptographic Git proofs.");
-                      setDisputeOpen(true);
-                    }}
-                  >
-                    Reject &amp; Escalate to Dispute
-                  </button>
-                )}
+
+                <div className="flex items-center gap-3 pt-2 flex-wrap">
+                  {isAwaitingMyAction && (
+                    <>
+                      <button
+                        className="btn-primary flex-1 min-w-[160px] text-xs py-2.5 shadow-md shadow-indigo-500/20"
+                        onClick={handleAcceptSettlement}
+                        disabled={submittingAction}
+                      >
+                        {submittingAction ? "Processing..." : `Accept Settlement (${formatEth(settlement.workerPayout)})`}
+                      </button>
+                      <button
+                        className="btn-secondary flex-1 min-w-[140px] text-xs py-2.5"
+                        onClick={() => {
+                          setCounterPayout(settlement.workerPayout);
+                          setCounterOpen(true);
+                        }}
+                        disabled={submittingAction}
+                      >
+                        Counter-Offer Split
+                      </button>
+                    </>
+                  )}
+                  {isAwaitingMyAction && isFreelancer && (
+                    <button
+                      className="btn-danger text-xs py-2.5 px-4"
+                      onClick={() => {
+                        setDisputeReason("Rejecting partial settlement offer. Requesting escalation with cryptographic Git proofs.");
+                        setDisputeOpen(true);
+                      }}
+                    >
+                      Reject &amp; Escalate to Dispute
+                    </button>
+                  )}
+                  {isAwaitingMyAction && isClient && (
+                    <button
+                      className="btn-danger text-xs py-2.5 px-4"
+                      onClick={() => {
+                        setDisputeReason("Rejecting contributor counter-offer. Escalating to dispute resolution.");
+                        setDisputeOpen(true);
+                      }}
+                    >
+                      Reject &amp; Escalate to Dispute
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* 100% Full Refund Challenge Window Card */}
           {agreement.status === "REFUND_PENDING" && agreement.refund && (
@@ -1254,25 +1290,48 @@ export default function AgreementDetail() {
                   </div>
                 )}
 
-                {agreement.status === "SETTLEMENT_OFFERED" && (
-                  <div className="space-y-2.5 p-3.5 bg-indigo-50 dark:bg-[#6366F1]/10 rounded-xl border border-indigo-200 dark:border-indigo-500/30 text-xs">
-                    <p className="font-semibold text-indigo-900 dark:text-indigo-200">
-                      Settlement Pending
-                    </p>
-                    <p className="text-slate-600 dark:text-slate-400 text-[11px] font-sans">
-                      Proposed payout: <strong>{formatEth(agreement.settlement?.workerPayout)}</strong> to contributor, <strong>{formatEth(agreement.settlement?.clientRefund)}</strong> refunded to you.
-                    </p>
-                    {agreement.settlement?.proposedBy === agreement.freelancerId && (
-                      <button
-                        className="btn-primary w-full text-xs"
-                        onClick={handleAcceptSettlement}
-                        disabled={submittingAction}
-                      >
-                        Accept Contributor Counter-Offer
-                      </button>
-                    )}
-                  </div>
-                )}
+                {agreement.status === "SETTLEMENT_OFFERED" && (() => {
+                  const settlement = agreement.settlement || agreement.settlementProposal;
+                  const isCounterFromFreelancer = settlement && (
+                    settlement.proposedBy === "FREELANCER" ||
+                    settlement.proposedBy === agreement.freelancerId ||
+                    settlement.proposerId === agreement.freelancerId
+                  );
+                  return (
+                    <div className="space-y-2.5 p-3.5 bg-indigo-50 dark:bg-[#6366F1]/10 rounded-xl border border-indigo-200 dark:border-indigo-500/30 text-xs">
+                      <p className="font-semibold text-indigo-900 dark:text-indigo-200">
+                        {isCounterFromFreelancer ? "Contributor Counter-Offer Received" : "Settlement Offer Pending"}
+                      </p>
+                      <p className="text-slate-600 dark:text-slate-400 text-[11px] font-sans">
+                        Proposed payout: <strong>{formatEth(settlement?.workerPayout)}</strong> to contributor, <strong>{formatEth(settlement?.clientRefund)}</strong> refunded to you.
+                      </p>
+                      {isCounterFromFreelancer ? (
+                        <div className="space-y-2 pt-1">
+                          <button
+                            className="btn-primary w-full text-xs"
+                            onClick={handleAcceptSettlement}
+                            disabled={submittingAction}
+                          >
+                            Accept Contributor Counter-Offer ({formatEth(settlement?.workerPayout)})
+                          </button>
+                          <button
+                            className="btn-secondary w-full text-xs"
+                            onClick={() => {
+                              setCounterPayout(settlement?.workerPayout || 0);
+                              setCounterOpen(true);
+                            }}
+                          >
+                            Counter-Offer Again
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-indigo-700 dark:text-indigo-300 font-medium pt-1">
+                          Waiting for {agreement.freelancer?.name || "contributor"} to accept, counter, or escalate.
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {agreement.status === "REFUND_PENDING" && (
                   <div className="space-y-2.5 p-3.5 bg-amber-50 dark:bg-amber-500/10 rounded-xl border border-amber-200 dark:border-amber-500/30 text-xs">
@@ -1363,59 +1422,71 @@ export default function AgreementDetail() {
 
                 {agreement.status === "SUBMITTED" && (
                   <div className="space-y-2.5">
-                    <p className="text-xs text-slate-500 dark:text-slate-400 font-sans p-3 rounded-xl bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.06]">
-                      Waiting for {agreement.client?.name} to verify your submission.
-                    </p>
-                    <button
-                      className="h-10 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-mono text-xs font-bold uppercase tracking-wide transition-all shadow-md shadow-emerald-500/20 w-full"
-                      onClick={() => setRatingModalOpen(true)}
-                    >
-                      Approve &amp; Mint Attestation (Demo Mode)
-                    </button>
+                    <div className="p-3.5 bg-emerald-50 dark:bg-emerald-500/10 rounded-xl border border-emerald-200 dark:border-emerald-500/20 text-xs text-emerald-800 dark:text-emerald-300 space-y-1">
+                      <p className="font-semibold flex items-center gap-1.5">
+                        <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                        Submission Under Client Review
+                      </p>
+                      <p className="text-[11px] text-slate-600 dark:text-slate-400 font-sans">
+                        Deliverables submitted with cryptographic Git report. Waiting for {agreement.client?.name || "client"} to review and mint EAS attestation.
+                      </p>
+                    </div>
                   </div>
                 )}
 
-                {agreement.status === "SETTLEMENT_OFFERED" && (
-                  <div className="space-y-2.5">
-                    <div className="p-3.5 bg-indigo-50 dark:bg-[#6366F1]/10 rounded-xl border border-indigo-200 dark:border-indigo-500/30 text-xs text-slate-700 dark:text-slate-300 space-y-1">
-                      <p className="font-semibold text-indigo-900 dark:text-indigo-200">
-                        Partial Settlement Offered
-                      </p>
-                      <p className="text-[11px] font-sans">
-                        Client offered a payout of <strong>{formatEth(agreement.settlement?.workerPayout)}</strong>.
-                      </p>
+                {agreement.status === "SETTLEMENT_OFFERED" && (() => {
+                  const settlement = agreement.settlement || agreement.settlementProposal;
+                  const isFromClient = settlement && (
+                    settlement.proposedBy === "CLIENT" ||
+                    settlement.proposedBy === agreement.clientId ||
+                    settlement.proposerId === agreement.clientId
+                  );
+                  return (
+                    <div className="space-y-2.5">
+                      <div className="p-3.5 bg-indigo-50 dark:bg-[#6366F1]/10 rounded-xl border border-indigo-200 dark:border-indigo-500/30 text-xs text-slate-700 dark:text-slate-300 space-y-1">
+                        <p className="font-semibold text-indigo-900 dark:text-indigo-200">
+                          {isFromClient ? "Partial Settlement Offered" : "Counter-Offer Submitted"}
+                        </p>
+                        <p className="text-[11px] font-sans">
+                          Payout amount: <strong>{formatEth(settlement?.workerPayout)}</strong>.
+                        </p>
+                      </div>
+                      {isFromClient ? (
+                        <>
+                          <button
+                            className="btn-primary w-full text-xs"
+                            onClick={handleAcceptSettlement}
+                            disabled={submittingAction}
+                          >
+                            Accept Payout ({formatEth(settlement?.workerPayout)})
+                          </button>
+                          <button
+                            className="btn-secondary w-full text-xs"
+                            onClick={() => {
+                              setCounterPayout(settlement?.workerPayout || 0);
+                              setCounterOpen(true);
+                            }}
+                          >
+                            Counter-Offer Payout
+                          </button>
+                          <button
+                            className="btn-danger w-full text-xs"
+                            onClick={() => {
+                              setDisputeReason("Rejecting partial settlement. Requesting arbitration with cryptographic Git proofs.");
+                              setDisputeOpen(true);
+                            }}
+                          >
+                            Reject &amp; Escalate Dispute
+                          </button>
+                        </>
+                      ) : (
+                        <div className="p-3 rounded-xl bg-slate-50 dark:bg-[#141414] border border-slate-200 dark:border-white/[0.06] text-xs text-slate-500">
+                          Your counter-offer was sent. Waiting for {agreement.client?.name || "client"} response.
+                        </div>
+                      )}
                     </div>
-                    {agreement.settlement?.proposedBy === agreement.clientId && (
-                      <>
-                        <button
-                          className="btn-primary w-full text-xs"
-                          onClick={handleAcceptSettlement}
-                          disabled={submittingAction}
-                        >
-                          Accept Payout ({formatEth(agreement.settlement?.workerPayout)})
-                        </button>
-                        <button
-                          className="btn-secondary w-full text-xs"
-                          onClick={() => {
-                            setCounterPayout(agreement.settlement?.workerPayout || 0);
-                            setCounterOpen(true);
-                          }}
-                        >
-                          Counter-Offer Payout
-                        </button>
-                      </>
-                    )}
-                    <button
-                      className="btn-danger w-full text-xs"
-                      onClick={() => {
-                        setDisputeReason("Rejecting partial settlement. Requesting arbitration with cryptographic Git proofs.");
-                        setDisputeOpen(true);
-                      }}
-                    >
-                      Reject &amp; Escalate Dispute
-                    </button>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {agreement.status === "REFUND_PENDING" && (
                   <div className="space-y-2.5">

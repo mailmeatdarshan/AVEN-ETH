@@ -58,8 +58,21 @@ function enrich(agreement) {
 
   const freelancerRep = freelancer ? computeReputation(freelancer.id) : null;
 
+  const rawSettlement = agreement.settlementProposal || agreement.settlement || null;
+  const settlement = rawSettlement
+    ? {
+        ...rawSettlement,
+        proposedBy: rawSettlement.proposedBy || (rawSettlement.proposerId === agreement.clientId ? "CLIENT" : "FREELANCER"),
+        proposerId: rawSettlement.proposerId || (rawSettlement.proposedBy === "CLIENT" ? agreement.clientId : agreement.freelancerId),
+        counterHistory: rawSettlement.history || rawSettlement.counterHistory || [],
+        history: rawSettlement.history || rawSettlement.counterHistory || [],
+      }
+    : null;
+
   return {
     ...agreement,
+    settlement,
+    settlementProposal: settlement,
     earnedAmount: computeEarned(agreement),
     availableAmount: computeAvailable(agreement),
     client: client
@@ -248,7 +261,7 @@ router.post("/:id/cli-sync", requireRole("FREELANCER"), (req, res) => {
   });
 });
 
-router.post("/:id/dispute", requireRole("CLIENT"), (req, res) => {
+router.post("/:id/dispute", (req, res) => {
   handle(res, () => {
     const { reason } = req.body || {};
     const { agreement, transaction } = raiseDispute(req.params.id, req.user.id, reason);
@@ -271,7 +284,7 @@ router.post("/:id/submit", (req, res) => {
   });
 });
 
-router.post("/:id/approve", (req, res) => {
+router.post("/:id/approve", requireRole("CLIENT"), (req, res) => {
   handle(res, () => {
     const { rating, review } = req.body || {};
     const { agreement, transaction, attestation } = approveAndRelease(

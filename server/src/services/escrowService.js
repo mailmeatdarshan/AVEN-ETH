@@ -529,19 +529,60 @@ export function workAction(agreementId, userId, action, options = {}) {
       linesDeleted: 0,
       reportHash: null,
       notes: "",
+      gitConnected: false,
+      repoUrl: "",
+      baseCommit: "0000000000000000000000000000000000000000",
     });
   }
 
   const now = nowIso();
 
+  if (action === "git-link" || action === "git-connect") {
+    if (agreement.freelancerId !== userId && agreement.clientId !== userId) {
+      throw new DomainError("Only the assigned contributor can link their Git repository.", 403);
+    }
+    const branch = (options?.branch || session.branch || "main").trim();
+    const repoUrl = (options?.repoUrl || session.repoUrl || "").trim();
+    const baseCommit = (options?.baseCommit || session.baseCommit || "").trim() || `0x${sha256(`git-init-${agreementId}-${Date.now()}`)}`;
+    return db.workSessions.update(session.id, {
+      branch,
+      repoUrl,
+      baseCommit,
+      gitConnected: true,
+      gitConnectedAt: now,
+      lastSyncAt: now,
+    });
+  }
+
   if (action === "start" || action === "resume") {
     if (session.status === "RUNNING") throw new DomainError("Session is already running.");
+
+    const isNonCodeCategory = ["Bounty", "Grant", "Subscription", "AgentTask"].includes(agreement.category);
+    const hasIncomingBase = Boolean(options?.baseCommit && options.baseCommit !== "0000000000000000000000000000000000000000");
+    const hasSessionBase = Boolean(session.baseCommit && session.baseCommit !== "0000000000000000000000000000000000000000");
+    const isGitConnected = Boolean(
+      session.gitConnected ||
+      hasSessionBase ||
+      hasIncomingBase ||
+      options?.gitConnected ||
+      session.lastSyncAt ||
+      (session.commitsCount > 0) ||
+      session.repoUrl
+    );
+
+    if (!isGitConnected && !isNonCodeCategory) {
+      throw new DomainError("Git connection required. Connect your Git repository or run 'aven-eth watch' before starting work tracking.", 400);
+    }
+
+    const resolvedBaseCommit = options?.baseCommit || (hasSessionBase ? session.baseCommit : (isGitConnected ? `0x${sha256(`git-init-${agreementId}`)}` : "0000000000000000000000000000000000000000"));
+
     return db.workSessions.update(session.id, {
       status: "RUNNING",
       startedAt: now,
       lastSyncAt: now,
+      gitConnected: true,
       branch: options?.branch || session.branch || "main",
-      baseCommit: options?.baseCommit || session.baseCommit || "0000000000000000000000000000000000000000",
+      baseCommit: resolvedBaseCommit,
     });
   }
 
@@ -605,15 +646,22 @@ export function workAction(agreementId, userId, action, options = {}) {
   throw new DomainError("Unknown work session action.");
 }
 
-export function raiseDispute(agreementId, clientId, reason) {
+export function raiseDispute(agreementId, userId, reason) {
   const agreement = loadAgreementOr404(agreementId);
-  if (agreement.clientId !== clientId) throw new DomainError("Only the client can raise a dispute on this stream.", 403);
+  if (agreement.clientId !== userId && agreement.freelancerId !== userId) {
+    throw new DomainError("You are not authorized to raise a dispute on this stream.", 403);
+  }
   assertTransition(agreement.status, "DISPUTED");
+
+  const isClient = agreement.clientId === userId;
+  const otherPartyId = isClient ? agreement.freelancerId : agreement.clientId;
+  const initiatorLabel = isClient ? "Client" : "Contributor";
 
   const updated = touch(agreementId, {
     status: "DISPUTED",
-    disputeReason: (reason || "").trim() || "Client initiated emergency freeze and dispute review.",
+    disputeReason: (reason || "").trim() || `${initiatorLabel} initiated dispute and stream freeze review.`,
     disputedAt: nowIso(),
+    disputeInitiatedBy: userId,
   });
 
   // Freeze active work session
@@ -629,17 +677,17 @@ export function raiseDispute(agreementId, clientId, reason) {
 
   const txn = recordTransaction({
     agreementId,
-    fromUser: clientId,
+    fromUser: userId,
     toUser: "ESCROW_CONTRACT",
     type: "STREAM_DISPUTED",
     amount: 0,
-    data: { reason: reason || "Emergency Freeze" },
+    data: { reason: reason || "Emergency Freeze", initiatedBy: userId },
   });
 
-  notify(agreement.freelancerId, {
+  notify(otherPartyId, {
     type: "STREAM_DISPUTED",
-    title: "Stream Frozen by Client",
-    message: `${agreement.title}: stream has been frozen by the client for dispute review.`,
+    title: `Stream Frozen by ${initiatorLabel}`,
+    message: `${agreement.title}: stream has been frozen by the ${initiatorLabel.toLowerCase()} for dispute review.`,
     agreementId,
   });
 
@@ -830,8 +878,8 @@ export function submitWork(
 
 export function approveAndRelease(agreementId, userId, { rating = 5, review = "" } = {}) {
   const agreement = loadAgreementOr404(agreementId);
-  if (agreement.clientId !== userId && agreement.freelancerId !== userId) {
-    throw new DomainError("You cannot review this agreement.", 403);
+  if (agreement.clientId !== userId) {
+    throw new DomainError("Only the client can review deliverables and approve payment release.", 403);
   }
   assertTransition(agreement.status, "COMPLETED");
 

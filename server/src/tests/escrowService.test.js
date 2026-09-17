@@ -106,6 +106,20 @@ test("full happy-path streaming lifecycle: create -> fund -> start -> stream -> 
   const { agreement: started } = startProject(agreement.id, FREELANCER_ID);
   assert.equal(started.status, "IN_PROGRESS");
 
+  // Git connection is strictly required before starting timer
+  assert.throws(
+    () => workAction(agreement.id, FREELANCER_ID, "start"),
+    DomainError
+  );
+
+  // Contributor links Git repository
+  const connected = workAction(agreement.id, FREELANCER_ID, "git-connect", {
+    branch: "main",
+    baseCommit: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+  });
+  assert.equal(connected.gitConnected, true);
+
+  // Now start succeeds
   workAction(agreement.id, FREELANCER_ID, "start");
   const stoppedSession = workAction(agreement.id, FREELANCER_ID, "stop");
   assert.equal(stoppedSession.status, "STOPPED");
@@ -116,6 +130,12 @@ test("full happy-path streaming lifecycle: create -> fund -> start -> stream -> 
     deliverables: ["landing-v1.zip"],
   });
   assert.equal(submitted.status, "SUBMITTED");
+
+  // Freelancer cannot approve their own deliverables
+  assert.throws(
+    () => approveAndRelease(agreement.id, FREELANCER_ID, { rating: 5 }),
+    DomainError
+  );
 
   const { agreement: completed, transaction: payTxn, attestation } = approveAndRelease(
     agreement.id,
@@ -188,7 +208,8 @@ test("on-demand stream withdrawals mint an attestation and update wallet balance
   fundEscrow(agreement.id, CLIENT_ID);
   startProject(agreement.id, FREELANCER_ID);
 
-  // simulate work
+  // simulate work with linked Git
+  workAction(agreement.id, FREELANCER_ID, "git-connect", { branch: "main" });
   workAction(agreement.id, FREELANCER_ID, "start");
   workAction(agreement.id, FREELANCER_ID, "stop");
 
@@ -249,6 +270,7 @@ test("client dispute freezes stream, locks withdrawals, and allows resolution", 
   fundEscrow(agreement.id, CLIENT_ID);
   startProject(agreement.id, FREELANCER_ID);
 
+  workAction(agreement.id, FREELANCER_ID, "git-connect", { branch: "main" });
   workAction(agreement.id, FREELANCER_ID, "start");
 
   const { agreement: disputed } = raiseDispute(agreement.id, CLIENT_ID, "Suspected fake activity");

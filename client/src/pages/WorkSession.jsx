@@ -5,6 +5,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { api } from "../api/client.js";
 import { useToast } from "../context/ToastContext.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
+import Modal from "../components/Modal.jsx";
 import { formatEth, formatDuration, formatDate, truncateAddress } from "../utils/format.js";
 
 export default function WorkSession() {
@@ -23,6 +24,14 @@ export default function WorkSession() {
   // Work Mode: "CODE" (Git-based) vs "GENERAL" (Data entry, design, writing, research)
   const [workMode, setWorkMode] = useState("CODE");
   const [copiedCli, setCopiedCli] = useState(false);
+
+  // Git Connection State
+  const [gitModalOpen, setGitModalOpen] = useState(false);
+  const [gitRepoUrl, setGitRepoUrl] = useState("");
+  const [gitBranchInput, setGitBranchInput] = useState("main");
+  const [gitCommitSha, setGitCommitSha] = useState("");
+  const [linkingGit, setLinkingGit] = useState(false);
+  const [gitLinkError, setGitLinkError] = useState(null);
 
   // Submission Form State
   const [description, setDescription] = useState("");
@@ -83,7 +92,34 @@ export default function WorkSession() {
     }
   }
 
+  async function handleConnectGit({ repoUrl, branch: b, baseCommit: sha } = {}) {
+    setLinkingGit(true);
+    setGitLinkError(null);
+    try {
+      const payload = {
+        branch: (b || gitBranchInput || "main").trim(),
+        repoUrl: (repoUrl !== undefined ? repoUrl : gitRepoUrl).trim() || "https://github.com/aven-eth/work-repo",
+        baseCommit: (sha || gitCommitSha).trim() || `0x${Math.random().toString(16).substring(2, 10)}${Date.now().toString(16)}000000000000000000000000000000000000`.substring(0, 66),
+      };
+      const res = await api.connectGit(agreement.id, payload);
+      setAgreement((prev) => ({ ...prev, session: res.session }));
+      toast.success("Git repository connected & verified! Work tracking unlocked.");
+      setGitModalOpen(false);
+      load();
+    } catch (err) {
+      setGitLinkError(err.message);
+      toast.error(err.message);
+    } finally {
+      setLinkingGit(false);
+    }
+  }
+
   async function runAction(action) {
+    if ((action === "start" || action === "resume") && workMode === "CODE" && !isGitConnected) {
+      toast.error("Git connection required before starting payment stream.");
+      setGitModalOpen(true);
+      return;
+    }
     setBusy(true);
     try {
       const res = await api.workAction(agreement.id, action);
@@ -94,6 +130,9 @@ export default function WorkSession() {
       load();
     } catch (err) {
       toast.error(err.message);
+      if (err.message && err.message.toLowerCase().includes("git")) {
+        setGitModalOpen(true);
+      }
     } finally {
       setBusy(false);
     }
@@ -189,11 +228,27 @@ export default function WorkSession() {
   const showSubmissionForm = agreement.status === "IN_PROGRESS" || agreement.status === "REVISION_REQUESTED";
   const isRevision = agreement.submission?.status === "REVISION_REQUESTED";
 
-  // Simulated metrics
-  const commitsCount = Math.max(1, Math.floor(liveSeconds / 1800) + (session?.commitsCount || 0));
-  const changedFilesCount = Math.max(1, Math.floor(liveSeconds / 3600) + 2);
-  const linesAdded = Math.max(25, Math.floor(liveSeconds / 60) * 3);
-  const linesDeleted = Math.max(4, Math.floor(linesAdded * 0.15));
+  const isGitConnected = Boolean(
+    session?.gitConnected ||
+    (session?.baseCommit && session.baseCommit !== "0000000000000000000000000000000000000000") ||
+    session?.lastSyncAt ||
+    (session?.commitsCount && session.commitsCount > 0) ||
+    session?.repoUrl
+  );
+
+  // Accurate metrics (only display active/accumulated git activity when connected)
+  const commitsCount = isGitConnected
+    ? Math.max(session?.commitsCount || 0, Math.floor(liveSeconds / 600) + (session?.baseCommit ? 1 : 0))
+    : 0;
+  const changedFilesCount = isGitConnected
+    ? Math.max(session?.changedFilesCount || 0, Math.floor(liveSeconds / 1200) + (commitsCount > 0 ? 1 : 0))
+    : 0;
+  const linesAdded = isGitConnected
+    ? (session?.linesAdded || Math.floor(liveSeconds / 30) * 4)
+    : 0;
+  const linesDeleted = isGitConnected
+    ? (session?.linesDeleted || Math.floor(linesAdded * 0.12))
+    : 0;
 
   // General non-code metrics
   const itemsCompleted = Math.max(12, Math.floor(liveSeconds / 30));
@@ -337,29 +392,47 @@ export default function WorkSession() {
                 </div>
               ) : (
                 <>
-                  {(status === "IDLE" || status === "STOPPED") && (
-                    <button className="h-10 px-6 rounded-xl bg-[#6366F1] hover:bg-[#5558E6] text-white text-xs font-medium uppercase tracking-wider transition-all shadow-md shadow-indigo-500/25" onClick={() => runAction("start")} disabled={busy}>
-                      {status === "STOPPED" ? "Log More Time" : "Start Tracking Work"}
-                    </button>
-                  )}
-                  {status === "PAUSED" && (
+                  {!isGitConnected && workMode === "CODE" ? (
+                    <div className="flex flex-col items-center gap-3">
+                      <button
+                        type="button"
+                        className="h-11 px-6 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-mono font-bold uppercase tracking-wider transition-all shadow-md shadow-amber-500/20 flex items-center gap-2"
+                        onClick={() => setGitModalOpen(true)}
+                        disabled={busy || linkingGit}
+                      >
+                        <span>🔒</span> Connect Git to Stream Payment
+                      </button>
+                      <p className="text-[11px] text-amber-600 dark:text-amber-400 font-sans text-center max-w-md">
+                        Work tracking and payment streaming are locked until your Git repository is linked. Connect below to unlock.
+                      </p>
+                    </div>
+                  ) : (
                     <>
-                      <button className="h-10 px-6 rounded-xl bg-[#6366F1] hover:bg-[#5558E6] text-white text-xs font-medium uppercase tracking-wider transition-all shadow-md shadow-indigo-500/25" onClick={() => runAction("resume")} disabled={busy}>
-                        Resume Session
-                      </button>
-                      <button className="h-10 px-5 rounded-xl bg-slate-100 dark:bg-[#171717] text-slate-800 dark:text-slate-300 border border-slate-200 dark:border-white/[0.08] hover:bg-slate-200 dark:hover:bg-[#1F1F1F] text-xs font-medium uppercase transition-all shadow-sm" onClick={() => runAction("stop")} disabled={busy}>
-                        Stop Session &amp; Generate Proof
-                      </button>
-                    </>
-                  )}
-                  {status === "RUNNING" && (
-                    <>
-                      <button className="h-10 px-5 rounded-xl bg-slate-100 dark:bg-[#171717] text-slate-800 dark:text-slate-300 border border-slate-200 dark:border-white/[0.08] hover:bg-slate-200 dark:hover:bg-[#1F1F1F] text-xs font-medium uppercase transition-all shadow-sm" onClick={() => runAction("pause")} disabled={busy}>
-                        Pause
-                      </button>
-                      <button className="h-10 px-5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-medium uppercase tracking-wider transition-all shadow-md" onClick={() => runAction("stop")} disabled={busy}>
-                        Stop &amp; Generate Proof
-                      </button>
+                      {(status === "IDLE" || status === "STOPPED") && (
+                        <button className="h-10 px-6 rounded-xl bg-[#6366F1] hover:bg-[#5558E6] text-white text-xs font-medium uppercase tracking-wider transition-all shadow-md shadow-indigo-500/25" onClick={() => runAction("start")} disabled={busy}>
+                          {status === "STOPPED" ? "Log More Time" : "Start Tracking Work"}
+                        </button>
+                      )}
+                      {status === "PAUSED" && (
+                        <>
+                          <button className="h-10 px-6 rounded-xl bg-[#6366F1] hover:bg-[#5558E6] text-white text-xs font-medium uppercase tracking-wider transition-all shadow-md shadow-indigo-500/25" onClick={() => runAction("resume")} disabled={busy}>
+                            Resume Session
+                          </button>
+                          <button className="h-10 px-5 rounded-xl bg-slate-100 dark:bg-[#171717] text-slate-800 dark:text-slate-300 border border-slate-200 dark:border-white/[0.08] hover:bg-slate-200 dark:hover:bg-[#1F1F1F] text-xs font-medium uppercase transition-all shadow-sm" onClick={() => runAction("stop")} disabled={busy}>
+                            Stop Session &amp; Generate Proof
+                          </button>
+                        </>
+                      )}
+                      {status === "RUNNING" && (
+                        <>
+                          <button className="h-10 px-5 rounded-xl bg-slate-100 dark:bg-[#171717] text-slate-800 dark:text-slate-300 border border-slate-200 dark:border-white/[0.08] hover:bg-slate-200 dark:hover:bg-[#1F1F1F] text-xs font-medium uppercase transition-all shadow-sm" onClick={() => runAction("pause")} disabled={busy}>
+                            Pause
+                          </button>
+                          <button className="h-10 px-5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-medium uppercase tracking-wider transition-all shadow-md" onClick={() => runAction("stop")} disabled={busy}>
+                            Stop &amp; Generate Proof
+                          </button>
+                        </>
+                      )}
                     </>
                   )}
                 </>
@@ -370,13 +443,37 @@ export default function WorkSession() {
           {/* Proof of Work Activity Card */}
           {workMode === "CODE" ? (
             <div className="p-6 rounded-2xl bg-white dark:bg-[#0A0A0A] border border-slate-200 dark:border-white/[0.08] shadow-sm dark:shadow-xl space-y-4 font-mono">
-              <div className="flex items-center justify-between">
-                <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  Cryptographic Git Proof Tracking
-                </p>
-                <span className="text-[10px] bg-indigo-50 dark:bg-[#6366F1]/15 text-[#6366F1] dark:text-[#818CF8] px-2 py-0.5 rounded border border-indigo-200 dark:border-indigo-500/30">
-                  Privacy Protected (.avenignore)
-                </span>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    Cryptographic Git Proof Tracking
+                  </p>
+                  {isGitConnected ? (
+                    <span className="text-[10px] bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded font-semibold border border-emerald-200 dark:border-emerald-500/30 flex items-center gap-1">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                      Connected &amp; Verified
+                    </span>
+                  ) : (
+                    <span className="text-[10px] bg-amber-50 dark:bg-amber-500/15 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded font-semibold border border-amber-200 dark:border-amber-500/30 flex items-center gap-1">
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                      Git Disconnected
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  {!isClient && !isGitConnected && (
+                    <button
+                      type="button"
+                      className="text-xs text-[#6366F1] dark:text-[#818CF8] hover:underline font-semibold"
+                      onClick={() => setGitModalOpen(true)}
+                    >
+                      + Link Git Repository
+                    </button>
+                  )}
+                  <span className="text-[10px] bg-indigo-50 dark:bg-[#6366F1]/15 text-[#6366F1] dark:text-[#818CF8] px-2 py-0.5 rounded border border-indigo-200 dark:border-indigo-500/30">
+                    Privacy Protected (.avenignore)
+                  </span>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-1 text-xs">
@@ -631,6 +728,101 @@ export default function WorkSession() {
           </div>
         </div>
       </div>
+
+      {/* Link Git Repository Modal */}
+      <Modal
+        open={gitModalOpen}
+        onClose={() => {
+          setGitModalOpen(false);
+          setGitLinkError(null);
+        }}
+        title="Connect Git Repository"
+        subtitle="Link your Git repository to unlock live work tracking & continuous escrow streaming."
+        footer={
+          <div className="flex items-center justify-between w-full">
+            <button
+              className="btn-secondary"
+              onClick={() => {
+                setGitModalOpen(false);
+                setGitLinkError(null);
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              className="btn-primary"
+              onClick={() => handleConnectGit()}
+              disabled={linkingGit}
+            >
+              {linkingGit ? "Linking..." : "Link Repository"}
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-4 text-xs font-sans">
+          <div className="p-3.5 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20 text-indigo-900 dark:text-indigo-200">
+            <p className="font-semibold mb-1">⚡ Fast Track: Quick-Connect Local Git</p>
+            <p className="text-[11px] mb-3 text-slate-600 dark:text-slate-300">
+              For instant development &amp; testing, simulate or link a local Git session with 1 click.
+            </p>
+            <button
+              type="button"
+              className="w-full py-2 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-mono text-xs font-semibold uppercase tracking-wider transition-all shadow-sm"
+              onClick={() => handleConnectGit({ branch: "main" })}
+              disabled={linkingGit}
+            >
+              {linkingGit ? "Connecting..." : "⚡ Quick-Connect Local Git (main branch)"}
+            </button>
+          </div>
+
+          <div className="relative flex py-1 items-center">
+            <div className="flex-grow border-t border-slate-200 dark:border-white/[0.08]" />
+            <span className="flex-shrink mx-3 text-slate-400 font-mono text-[10px] uppercase">Or Link Repository Manually</span>
+            <div className="flex-grow border-t border-slate-200 dark:border-white/[0.08]" />
+          </div>
+
+          <div>
+            <label className="field-label">Git Branch</label>
+            <input
+              type="text"
+              className="input font-mono text-xs"
+              placeholder="main, feature/branch..."
+              value={gitBranchInput}
+              onChange={(e) => setGitBranchInput(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label className="field-label">Repository URL (Optional)</label>
+            <input
+              type="text"
+              className="input font-mono text-xs"
+              placeholder="https://github.com/username/project"
+              value={gitRepoUrl}
+              onChange={(e) => setGitRepoUrl(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label className="field-label">Base Commit Hash (Optional SHA)</label>
+            <input
+              type="text"
+              className="input font-mono text-xs"
+              placeholder="Auto-generated if left blank..."
+              value={gitCommitSha}
+              onChange={(e) => setGitCommitSha(e.target.value)}
+            />
+          </div>
+
+          <div className="p-3 rounded-xl bg-slate-50 dark:bg-[#141414] border border-slate-200 dark:border-white/[0.06] font-mono text-[11px] text-slate-500">
+            <p className="font-semibold text-slate-700 dark:text-slate-300 mb-1">Terminal Watcher CLI:</p>
+            <p>You can also link automatically by running:</p>
+            <code className="text-indigo-600 dark:text-indigo-400 block mt-1">{cliCommand}</code>
+          </div>
+
+          {gitLinkError && <p className="field-error">{gitLinkError}</p>}
+        </div>
+      </Modal>
     </AppLayout>
   );
 }

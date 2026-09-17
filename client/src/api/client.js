@@ -70,7 +70,8 @@ export const api = {
   resumeStream: (id) => request(`/agreements/${id}/resume`, { method: "POST" }),
   cancelStream: (id) => request(`/agreements/${id}/cancel`, { method: "POST" }),
   withdrawStream: (id, amount) => request(`/agreements/${id}/withdraw`, { method: "POST", body: { amount } }),
-  workAction: (id, action) => request(`/agreements/${id}/work/${action}`, { method: "POST" }),
+  workAction: (id, action, body = {}) => request(`/agreements/${id}/work/${action}`, { method: "POST", body }),
+  connectGit: (id, payload = {}) => request(`/agreements/${id}/work/git-connect`, { method: "POST", body: payload }),
   submitWork: (id, payload) => request(`/agreements/${id}/submit`, { method: "POST", body: payload }),
   approve: (id, rating, review) => request(`/agreements/${id}/approve`, { method: "POST", body: { rating, review } }),
   requestRevision: (id, feedback) =>
