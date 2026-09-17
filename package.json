@@ -19,6 +19,8 @@
     "dev:server": "npm run dev --prefix server",
     "dev:client": "npm run dev --prefix client",
     "build": "vite build",
+    "slides": "npm run dev --prefix sidekick",
+    "slides:build": "npm run build --prefix sidekick",
     "test": "npm test --prefix server",
     "test:contracts": "npm test --prefix contracts",
     "test:all": "npm test --prefix server && npm test --prefix contracts",
@@ -26,7 +28,9 @@
     "deploy:contracts:local": "npm run deploy:local --prefix contracts"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
     "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
     "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2"
   },

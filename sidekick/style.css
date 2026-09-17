@@ -1,0 +1,241 @@
+@import url("https://fonts.googleapis.com/css2?family=Radio+Canada+Big:wght@400;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&family=Geist+Mono:wght@400;600;700&family=Kalam:wght@400;700&display=swap");
+
+:root {
+  --bg:            #FAF8F4;
+  --surface:       #FFFFFF;
+  --cream:         #FFEAD7;
+  --ink:           #2B2620;
+  --ink-dim:       #7A7165;
+  --border:        #E7E0D4;
+
+  --sapphire:      #476BFF;
+  --sapphire-soft: #C2CEFF;
+  --sapphire-dark: #0129CC;
+  --mint:          #53DFA9;
+  --mint-soft:     #DBF9EE;
+  --lime:          #CDE519;
+  --claim:         #F5512E;
+
+  --accent:        var(--sapphire);
+  --panel:         var(--surface);
+  --panel-border:  var(--border);
+}
+
+.slidev-layout {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "Radio Canada Big", -apple-system, sans-serif;
+  --slidev-code-font-size: 0.85em;
+}
+
+.slidev-layout.two-cols-header {
+  column-gap: 2.2rem;
+  row-gap: 0.6rem;
+}
+
+.code-contract pre {
+  font-size: 11.5px !important;
+  line-height: 1.38 !important;
+  padding: 0.65rem 0.85rem !important;
+  border-radius: 0.75rem !important;
+  border: 1px solid var(--border) !important;
+  background: var(--surface) !important;
+  margin: 0 !important;
+}
+
+.code-contract code {
+  font-size: 11.5px !important;
+  font-family: "Geist Mono", monospace !important;
+}
+
+.slidev-layout h1,
+.slidev-layout h2,
+.font-serif {
+  font-family: "Source Serif 4", Georgia, serif;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  line-height: 1.08;
+}
+
+.slidev-layout h3,
+.slidev-layout h4 {
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+
+.slidev-layout.cover,
+.slidev-layout.section,
+.slidev-layout.statement,
+.slidev-layout.center,
+.slidev-layout.full {
+  background: var(--bg);
+}
+
+.sc-list { display: flex; flex-direction: column; gap: 0.55rem; }
+.sc-list span {
+  position: relative; padding-left: 1.1rem;
+  font-size: 1.15rem; color: var(--ink-dim);
+}
+.sc-list span::before {
+  content: ""; position: absolute; left: 0; top: 0.55em;
+  width: 7px; height: 7px; border-radius: 50%; background: var(--mint);
+}
+
+.font-hand { font-family: "Kalam", cursive; }
+
+.pill {
+  display: inline-flex; align-items: center; gap: 0.35em;
+  padding: 0.2em 0.75em; border-radius: 999px;
+  font-size: 0.8em; font-weight: 600;
+  font-family: "Geist Mono", monospace;
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--ink);
+}
+
+.claims { display: flex; flex-direction: column; gap: 1.4rem; align-items: center; }
+.claim-row { display: flex; align-items: center; gap: 1.2rem; font-size: 1.3rem; }
+.claim-row .narrow { color: var(--ink-dim); text-decoration: line-through; text-decoration-color: var(--claim); text-decoration-thickness: 2px; }
+.claim-row .arrow { font-size: 0.95rem; color: var(--ink-dim); font-style: italic; }
+.claim-row .broad { color: var(--sapphire); font-weight: 700; font-family: "Source Serif 4", Georgia, serif; }
+
+.chip {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 0.75rem 1rem; font-size: 0.95rem; font-weight: 600;
+  box-shadow: 0 4px 12px rgba(43,38,32,0.04);
+}
+
+.card-editorial {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 1.5rem;
+  box-shadow: 0 12px 32px -8px rgba(43,38,32,0.08);
+}
+
+/* ==========================================================================
+   Dark Mode Theme System
+   ========================================================================== */
+html.dark {
+  --bg:            #0F0E13;
+  --surface:       #18171F;
+  --cream:         #231E1B;
+  --ink:           #F4F2ED;
+  --ink-dim:       #A39E93;
+  --border:        #2A2733;
+
+  --sapphire:      #6B8AFF;
+  --sapphire-soft: #1E2856;
+  --sapphire-dark: #8CA4FF;
+  --mint:          #4EEDA6;
+  --mint-soft:     #133827;
+  --lime:          #D8ED34;
+  --claim:         #FF6442;
+
+  --accent:        var(--sapphire);
+  --panel:         var(--surface);
+  --panel-border:  var(--border);
+}
+
+html.dark .bg-white {
+  background-color: var(--surface) !important;
+}
+
+html.dark .bg-stone-50 {
+  background-color: #14131A !important;
+}
+
+html.dark .bg-stone-100 {
+  background-color: #211F2B !important;
+}
+
+html.dark .border-stone-200,
+html.dark .border-stone-300 {
+  border-color: var(--border) !important;
+}
+
+html.dark .divide-stone-100 > * {
+  border-color: var(--border) !important;
+}
+
+html.dark .text-stone-900 {
+  color: #F4F2ED !important;
+}
+
+html.dark .text-stone-800 {
+  color: #E6E4DD !important;
+}
+
+html.dark .text-stone-700 {
+  color: #D3CFCA !important;
+}
+
+html.dark .text-stone-600 {
+  color: #A39E93 !important;
+}
+
+html.dark .text-stone-500 {
+  color: #837E74 !important;
+}
+
+html.dark .text-blue-900 {
+  color: #C2CEFF !important;
+}
+
+html.dark .text-emerald-900 {
+  color: #A7F3D0 !important;
+}
+
+html.dark .text-purple-900 {
+  color: #DDD6FE !important;
+}
+
+html.dark .text-red-900 {
+  color: #FECACA !important;
+}
+
+html.dark .bg-blue-50,
+html.dark .bg-blue-50\/70 {
+  background-color: rgba(71, 107, 255, 0.16) !important;
+}
+
+html.dark .bg-emerald-50 {
+  background-color: rgba(16, 185, 129, 0.14) !important;
+}
+
+html.dark .bg-indigo-50 {
+  background-color: rgba(99, 102, 241, 0.14) !important;
+}
+
+html.dark .bg-purple-50 {
+  background-color: rgba(168, 85, 247, 0.14) !important;
+}
+
+html.dark .bg-red-50 {
+  background-color: rgba(239, 68, 68, 0.14) !important;
+}
+
+html.dark .hover\:bg-stone-50:hover {
+  background-color: #211F2B !important;
+}
+
+html.dark .card-editorial {
+  box-shadow: 0 16px 36px -8px rgba(0, 0, 0, 0.5) !important;
+}
+
+html.dark .rough-note-wrap {
+  background: var(--surface) !important;
+}
+
+html.dark .rough-points li {
+  color: #E6E4DD !important;
+}
+
+/* Completely remove Slidev info button, branding and external links */
+button[title="Show info"],
+.slidev-info-dialog,
+a[href*="slidev"],
+a[href*="sli.dev"] {
+  display: none !important;
+}
+

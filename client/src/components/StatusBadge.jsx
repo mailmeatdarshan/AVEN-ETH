@@ -16,6 +16,8 @@ const CONFIG = {
   IDLE: { label: "Not Started", tone: "neutral" },
   CONFIRMED: { label: "Confirmed", tone: "success" },
   DISPUTED: { label: "Disputed Freeze", tone: "danger" },
+  SETTLEMENT_OFFERED: { label: "Settlement Offered", tone: "accent" },
+  REFUND_PENDING: { label: "Refund Challenging", tone: "warning" },
 };
 
 const TONE_CLASSES = {

@@ -16,6 +16,14 @@ import {
   rejectSubmission,
   raiseDispute,
   resolveDispute,
+  proposeSettlement,
+  acceptSettlement,
+  counterSettlement,
+  requestFullRefund,
+  appealRefund,
+  acceptRefund,
+  arbitrateDispute,
+  reassignAgreement,
   computeEarned,
   computeAvailable,
   DomainError,
@@ -288,6 +296,68 @@ router.post("/:id/reject", (req, res) => {
     const { reason } = req.body || {};
     const { agreement, submission } = rejectSubmission(req.params.id, req.user.id, reason);
     return { agreement: enrich(agreement), submission };
+  });
+});
+
+router.post("/:id/settlement/propose", requireRole("CLIENT"), (req, res) => {
+  handle(res, () => {
+    const { workerPayout, reason } = req.body || {};
+    const { agreement } = proposeSettlement(req.params.id, req.user.id, { workerPayout, reason });
+    return { agreement: enrich(agreement) };
+  });
+});
+
+router.post("/:id/settlement/accept", (req, res) => {
+  handle(res, () => {
+    const { agreement, attestation } = acceptSettlement(req.params.id, req.user.id);
+    return { agreement: enrich(agreement), attestation };
+  });
+});
+
+router.post("/:id/settlement/counter", (req, res) => {
+  handle(res, () => {
+    const { workerPayout, reason } = req.body || {};
+    const { agreement } = counterSettlement(req.params.id, req.user.id, { workerPayout, reason });
+    return { agreement: enrich(agreement) };
+  });
+});
+
+router.post("/:id/refund/request", requireRole("CLIENT"), (req, res) => {
+  handle(res, () => {
+    const { reason } = req.body || {};
+    const { agreement } = requestFullRefund(req.params.id, req.user.id, reason);
+    return { agreement: enrich(agreement) };
+  });
+});
+
+router.post("/:id/refund/appeal", requireRole("FREELANCER"), (req, res) => {
+  handle(res, () => {
+    const { justification } = req.body || {};
+    const { agreement, proofBundle } = appealRefund(req.params.id, req.user.id, justification);
+    return { agreement: enrich(agreement), proofBundle };
+  });
+});
+
+router.post("/:id/refund/accept", requireRole("FREELANCER"), (req, res) => {
+  handle(res, () => {
+    const { agreement } = acceptRefund(req.params.id, req.user.id);
+    return { agreement: enrich(agreement) };
+  });
+});
+
+router.post("/:id/arbitrate", (req, res) => {
+  handle(res, () => {
+    const { resolution, workerPayout, clientRefund, arbitratorNotes } = req.body || {};
+    const { agreement } = arbitrateDispute(req.params.id, { resolution, workerPayout, clientRefund, arbitratorNotes });
+    return { agreement: enrich(agreement) };
+  });
+});
+
+router.post("/:id/reassign", requireRole("CLIENT"), (req, res) => {
+  handle(res, () => {
+    const { newFreelancerId } = req.body || {};
+    const { agreement } = reassignAgreement(req.params.id, req.user.id, newFreelancerId);
+    return { agreement: enrich(agreement) };
   });
 });
 

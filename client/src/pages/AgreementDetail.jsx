@@ -43,8 +43,12 @@ function Timeline({ agreement }) {
   }
 
   const currentIdx = TIMELINE_ORDER.indexOf(
-    agreement.status === "REVISION_REQUESTED" || agreement.status === "PAUSED"
-      ? "IN_PROGRESS"
+    agreement.status === "REVISION_REQUESTED" ||
+    agreement.status === "PAUSED" ||
+    agreement.status === "SETTLEMENT_OFFERED" ||
+    agreement.status === "REFUND_PENDING" ||
+    agreement.status === "DISPUTED"
+      ? "SUBMITTED"
       : agreement.status
   );
 
@@ -88,6 +92,21 @@ function Timeline({ agreement }) {
           Revision requested &mdash; contributor is updating deliverables.
         </div>
       )}
+      {agreement.status === "SETTLEMENT_OFFERED" && (
+        <div className="ml-5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 px-3.5 py-2.5 text-xs text-indigo-700 dark:text-indigo-300 font-mono">
+          Partial settlement negotiation active &mdash; awaiting counter or acceptance.
+        </div>
+      )}
+      {agreement.status === "REFUND_PENDING" && (
+        <div className="ml-5 rounded-xl bg-amber-500/10 border border-amber-500/20 px-3.5 py-2.5 text-xs text-amber-700 dark:text-amber-300 font-mono">
+          100% Refund requested &mdash; 48-Hour Contributor Challenge Window open.
+        </div>
+      )}
+      {agreement.status === "DISPUTED" && (
+        <div className="ml-5 rounded-xl bg-rose-500/10 border border-rose-500/20 px-3.5 py-2.5 text-xs text-rose-700 dark:text-rose-300 font-mono">
+          Escrow frozen in Dispute &mdash; Cryptographic Git Proof Dossier locked.
+        </div>
+      )}
     </div>
   );
 }
@@ -106,6 +125,29 @@ export default function AgreementDetail() {
   const [rejectOpen, setRejectOpen] = useState(false);
   const [disputeOpen, setDisputeOpen] = useState(false);
   const [ratingModalOpen, setRatingModalOpen] = useState(false);
+
+  // Negotiation, Settlement & Reassignment modals
+  const [settlementOpen, setSettlementOpen] = useState(false);
+  const [counterOpen, setCounterOpen] = useState(false);
+  const [refundOpen, setRefundOpen] = useState(false);
+  const [appealOpen, setAppealOpen] = useState(false);
+  const [arbitrateOpen, setArbitrateOpen] = useState(false);
+  const [reassignOpen, setReassignOpen] = useState(false);
+
+  const [talentList, setTalentList] = useState([]);
+  const [loadingTalent, setLoadingTalent] = useState(false);
+  const [selectedFreelancerId, setSelectedFreelancerId] = useState("");
+
+  const [workerPayout, setWorkerPayout] = useState(0);
+  const [settlementReason, setSettlementReason] = useState("");
+  const [counterPayout, setCounterPayout] = useState(0);
+  const [counterReason, setCounterReason] = useState("");
+  const [refundReason, setRefundReason] = useState("");
+  const [appealJustification, setAppealJustification] = useState("");
+  const [arbitrateDecision, setArbitrateDecision] = useState("SPLIT");
+  const [arbitrateWorkerPayout, setArbitrateWorkerPayout] = useState(0);
+  const [arbitrateNotes, setArbitrateNotes] = useState("");
+  const [submittingAction, setSubmittingAction] = useState(false);
 
   const [feedback, setFeedback] = useState("");
   const [reason, setReason] = useState("");
@@ -186,9 +228,15 @@ export default function AgreementDetail() {
 
   const isClient = isAgreementClient;
   const isFreelancer = isAgreementFreelancer;
-  const escrowActive = ["FUNDED", "IN_PROGRESS", "SUBMITTED", "REVISION_REQUESTED"].includes(
-    agreement.status
-  );
+  const escrowActive = [
+    "FUNDED",
+    "IN_PROGRESS",
+    "SUBMITTED",
+    "REVISION_REQUESTED",
+    "SETTLEMENT_OFFERED",
+    "REFUND_PENDING",
+    "DISPUTED",
+  ].includes(agreement.status);
 
   async function handleStartProject() {
     setStartingProject(true);
@@ -300,6 +348,190 @@ export default function AgreementDetail() {
       load();
     } catch (err) {
       setActionError(err.message);
+    }
+  }
+
+  async function handleProposeSettlement() {
+    if (!settlementReason.trim() || settlementReason.trim().length < 5) {
+      setActionError("Please provide a constructive rationale for the proposed settlement split.");
+      return;
+    }
+    const payoutNum = Number(workerPayout);
+    if (isNaN(payoutNum) || payoutNum < 0 || payoutNum > agreement.budget) {
+      setActionError(`Payout must be between 0 and total budget (${agreement.budget} ETH/USDC).`);
+      return;
+    }
+    setSubmittingAction(true);
+    try {
+      await api.proposeSettlement(agreement.id, payoutNum, settlementReason.trim());
+      toast.success(`Settlement proposal of ${formatEth(payoutNum)} sent to contributor.`);
+      setSettlementOpen(false);
+      setSettlementReason("");
+      setActionError(null);
+      load();
+    } catch (err) {
+      setActionError(err.message);
+    } finally {
+      setSubmittingAction(false);
+    }
+  }
+
+  async function handleAcceptSettlement() {
+    setSubmittingAction(true);
+    try {
+      const res = await api.acceptSettlement(agreement.id);
+      toast.success(`Settlement accepted! ${formatEth(res.agreement.settlement.workerPayout)} transferred.`);
+      load();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setSubmittingAction(false);
+    }
+  }
+
+  async function handleCounterSettlement() {
+    if (!counterReason.trim() || counterReason.trim().length < 5) {
+      setActionError("Please provide a justification for your counter-offer.");
+      return;
+    }
+    const payoutNum = Number(counterPayout);
+    if (isNaN(payoutNum) || payoutNum < 0 || payoutNum > agreement.budget) {
+      setActionError(`Payout must be between 0 and total budget (${agreement.budget} ETH/USDC).`);
+      return;
+    }
+    setSubmittingAction(true);
+    try {
+      await api.counterSettlement(agreement.id, payoutNum, counterReason.trim());
+      toast.success(`Counter-offer of ${formatEth(payoutNum)} submitted.`);
+      setCounterOpen(false);
+      setCounterReason("");
+      setActionError(null);
+      load();
+    } catch (err) {
+      setActionError(err.message);
+    } finally {
+      setSubmittingAction(false);
+    }
+  }
+
+  async function handleRequestFullRefund() {
+    if (!refundReason.trim() || refundReason.trim().length < 5) {
+      setActionError("A detailed explanation is required for a 100% full refund request.");
+      return;
+    }
+    setSubmittingAction(true);
+    try {
+      await api.requestFullRefund(agreement.id, refundReason.trim());
+      toast.warning("Full refund requested. 48-Hour Contributor Challenge Window is now active.");
+      setRefundOpen(false);
+      setRefundReason("");
+      setActionError(null);
+      load();
+    } catch (err) {
+      setActionError(err.message);
+    } finally {
+      setSubmittingAction(false);
+    }
+  }
+
+  async function handleAcceptRefund() {
+    setSubmittingAction(true);
+    try {
+      await api.acceptRefund(agreement.id);
+      toast.info("Full refund accepted. Escrow returned to client.");
+      load();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setSubmittingAction(false);
+    }
+  }
+
+  async function handleAppealRefund() {
+    if (!appealJustification.trim() || appealJustification.trim().length < 5) {
+      setActionError("Please detail the work delivered and commits made to challenge the refund.");
+      return;
+    }
+    setSubmittingAction(true);
+    try {
+      await api.appealRefund(agreement.id, appealJustification.trim());
+      toast.success("Refund challenged! Stream locked in Dispute with Cryptographic Git Proofs.");
+      setAppealOpen(false);
+      setAppealJustification("");
+      setActionError(null);
+      load();
+    } catch (err) {
+      setActionError(err.message);
+    } finally {
+      setSubmittingAction(false);
+    }
+  }
+
+  async function handleArbitrateDispute() {
+    setSubmittingAction(true);
+    try {
+      let wp = 0;
+      let cr = 0;
+      if (arbitrateDecision === "CLIENT_FAVORED") {
+        wp = 0;
+        cr = agreement.budget;
+      } else if (arbitrateDecision === "WORKER_FAVORED") {
+        wp = agreement.budget;
+        cr = 0;
+      } else {
+        wp = Number(arbitrateWorkerPayout);
+        cr = agreement.budget - wp;
+      }
+      await api.arbitrateDispute(agreement.id, {
+        resolution: arbitrateDecision,
+        workerPayout: wp,
+        clientRefund: cr,
+        arbitratorNotes: arbitrateNotes || "Mutual consensus resolution applied",
+      });
+      toast.success("Dispute successfully resolved! Vault funds dispatched according to ruling.");
+      setArbitrateOpen(false);
+      load();
+    } catch (err) {
+      setActionError(err.message);
+    } finally {
+      setSubmittingAction(false);
+    }
+  }
+
+  async function openReassignModal() {
+    setReassignOpen(true);
+    setLoadingTalent(true);
+    try {
+      const res = await api.freelancers();
+      const available = (res.freelancers || []).filter(
+        (f) => f.id !== agreement.freelancerId && f.id !== agreement.clientId
+      );
+      setTalentList(available);
+      if (available.length > 0) {
+        setSelectedFreelancerId(available[0].id);
+      }
+    } catch (err) {
+      toast.error("Failed to load talent pool");
+    } finally {
+      setLoadingTalent(false);
+    }
+  }
+
+  async function handleReassign() {
+    if (!selectedFreelancerId) {
+      setActionError("Please select a contributor from the talent pool.");
+      return;
+    }
+    setSubmittingAction(true);
+    try {
+      await api.reassignAgreement(agreement.id, selectedFreelancerId);
+      toast.success("Project successfully reassigned to new contributor!");
+      setReassignOpen(false);
+      load();
+    } catch (err) {
+      setActionError(err.message);
+    } finally {
+      setSubmittingAction(false);
     }
   }
 
@@ -418,6 +650,254 @@ export default function AgreementDetail() {
               </div>
             </div>
           </div>
+
+          {/* Active Settlement Negotiation Card */}
+          {agreement.status === "SETTLEMENT_OFFERED" && agreement.settlement && (
+            <div className="p-6 rounded-2xl bg-gradient-to-br from-indigo-500/10 via-purple-500/5 to-transparent border border-indigo-500/30 shadow-sm dark:shadow-2xl space-y-5">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="h-3 w-3 rounded-full bg-indigo-500 animate-pulse" />
+                  <h3 className="text-base font-semibold text-slate-900 dark:text-white font-sans">
+                    Active Partial Settlement Negotiation
+                  </h3>
+                </div>
+                <span className="text-xs font-mono px-2.5 py-1 rounded-full bg-indigo-50 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 font-semibold border border-indigo-200 dark:border-indigo-500/30">
+                  Proposed by {agreement.settlement.proposedBy === agreement.clientId ? "Client" : "Contributor"}
+                </span>
+              </div>
+
+              <div className="grid sm:grid-cols-2 gap-4 font-mono text-xs">
+                <div className="p-4 rounded-xl bg-white dark:bg-[#141414] border border-emerald-500/30 space-y-1">
+                  <span className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400">
+                    Contributor Payout (Earned)
+                  </span>
+                  <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400">
+                    {formatEth(agreement.settlement.workerPayout)}
+                  </p>
+                  <p className="text-[11px] text-slate-500">
+                    ({Math.round((agreement.settlement.workerPayout / agreement.budget) * 100)}% of total budget)
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-xl bg-white dark:bg-[#141414] border border-slate-200 dark:border-white/[0.08] space-y-1">
+                  <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">
+                    Client Refund (Returned to Vault)
+                  </span>
+                  <p className="text-xl font-bold text-slate-900 dark:text-white">
+                    {formatEth(agreement.settlement.clientRefund)}
+                  </p>
+                  <p className="text-[11px] text-slate-500">
+                    ({Math.round((agreement.settlement.clientRefund / agreement.budget) * 100)}% refund)
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-100 dark:bg-black/30 border border-slate-200 dark:border-white/[0.06] text-xs font-sans space-y-1">
+                <p className="font-semibold text-slate-700 dark:text-slate-300 font-mono text-[11px] uppercase tracking-wider">
+                  Proposer's Justification &amp; Rationale:
+                </p>
+                <p className="text-slate-600 dark:text-slate-300 italic">
+                  "{agreement.settlement.reason}"
+                </p>
+              </div>
+
+              {agreement.settlement.counterHistory?.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-[11px] font-mono font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    Negotiation History ({agreement.settlement.counterHistory.length} previous offers)
+                  </p>
+                  <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                    {agreement.settlement.counterHistory.map((ch, idx) => (
+                      <div key={idx} className="p-3 rounded-lg bg-white dark:bg-[#141414] border border-slate-200 dark:border-white/[0.06] text-xs font-mono flex items-center justify-between">
+                        <div>
+                          <span className="font-semibold text-slate-800 dark:text-slate-200">
+                            {ch.proposedBy === agreement.clientId ? "Client" : "Contributor"}: {formatEth(ch.workerPayout)}
+                          </span>
+                          <p className="text-[10px] text-slate-500 truncate max-w-sm mt-0.5">"{ch.reason}"</p>
+                        </div>
+                        <span className="text-[10px] text-slate-400">{formatDate(ch.proposedAt)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center gap-3 pt-2 flex-wrap">
+                {((isFreelancer && agreement.settlement.proposedBy === agreement.clientId) ||
+                  (isClient && agreement.settlement.proposedBy === agreement.freelancerId)) && (
+                  <>
+                    <button
+                      className="btn-primary flex-1 min-w-[160px] text-xs py-2.5 shadow-md shadow-indigo-500/20"
+                      onClick={handleAcceptSettlement}
+                      disabled={submittingAction}
+                    >
+                      {submittingAction ? "Processing..." : `Accept Settlement (${formatEth(agreement.settlement.workerPayout)})`}
+                    </button>
+                    <button
+                      className="btn-secondary flex-1 min-w-[140px] text-xs py-2.5"
+                      onClick={() => {
+                        setCounterPayout(agreement.settlement.workerPayout);
+                        setCounterOpen(true);
+                      }}
+                      disabled={submittingAction}
+                    >
+                      Counter-Offer Split
+                    </button>
+                  </>
+                )}
+                {isFreelancer && (
+                  <button
+                    className="btn-danger text-xs py-2.5 px-4"
+                    onClick={() => {
+                      setDisputeReason("Rejecting partial settlement. Requesting full dispute mediation with cryptographic Git proofs.");
+                      setDisputeOpen(true);
+                    }}
+                  >
+                    Reject &amp; Escalate to Dispute
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* 100% Full Refund Challenge Window Card */}
+          {agreement.status === "REFUND_PENDING" && agreement.refund && (
+            <div className="p-6 rounded-2xl bg-amber-500/10 border border-amber-500/30 shadow-sm dark:shadow-2xl space-y-4">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="h-3 w-3 rounded-full bg-amber-500 animate-pulse" />
+                  <h3 className="text-base font-semibold text-amber-900 dark:text-amber-200 font-sans">
+                    100% Full Refund Requested &mdash; 48-Hour Contributor Challenge Window
+                  </h3>
+                </div>
+                <span className="text-xs font-mono px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-800 dark:text-amber-300 font-semibold border border-amber-500/30">
+                  Escrow Protected
+                </span>
+              </div>
+
+              <div className="p-4 rounded-xl bg-white dark:bg-[#141414] border border-amber-500/20 space-y-2 text-xs font-sans">
+                <p className="font-semibold text-slate-800 dark:text-slate-200 font-mono text-[11px] uppercase tracking-wider">
+                  Client's Rejection Rationale:
+                </p>
+                <p className="text-slate-600 dark:text-slate-300 italic">
+                  "{agreement.refund.reason}"
+                </p>
+                <p className="text-[11px] text-slate-500 font-mono pt-1">
+                  Requested on: {formatDateTime(agreement.refund.requestedAt)} &bull; Challenge window open until: {formatDateTime(agreement.refund.challengeWindowEndsAt)}
+                </p>
+              </div>
+
+              {isFreelancer && (
+                <div className="flex items-center gap-3 pt-2 flex-wrap">
+                  <button
+                    className="h-10 px-5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-mono text-xs font-bold uppercase tracking-wide transition-all shadow-md flex-1 min-w-[200px]"
+                    onClick={() => setAppealOpen(true)}
+                    disabled={submittingAction}
+                  >
+                    Appeal Rejection &amp; Escalate (Submit Git Proofs)
+                  </button>
+                  <button
+                    className="btn-secondary text-xs py-2.5 px-4"
+                    onClick={handleAcceptRefund}
+                    disabled={submittingAction}
+                  >
+                    Accept 100% Refund &amp; Close
+                  </button>
+                </div>
+              )}
+
+              {isClient && (
+                <div className="p-3 bg-amber-50 dark:bg-amber-950/30 rounded-xl border border-amber-200 dark:border-amber-800/40 text-xs font-mono text-amber-800 dark:text-amber-300">
+                  Awaiting contributor response. If the contributor does not challenge within the 48-hour window or accepts the refund, 100% of escrow funds ({formatEth(agreement.budget)}) will be returned to your wallet.
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Dispute & Cryptographic Proof Dossier Card */}
+          {agreement.status === "DISPUTED" && (
+            <div className="p-6 rounded-2xl bg-rose-500/10 border border-rose-500/30 shadow-sm dark:shadow-2xl space-y-5">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="h-3 w-3 rounded-full bg-rose-500 animate-pulse" />
+                  <h3 className="text-base font-semibold text-rose-900 dark:text-rose-200 font-sans">
+                    Escrow Frozen in Dispute Arbitration
+                  </h3>
+                </div>
+                <span className="text-xs font-mono px-2.5 py-1 rounded-full bg-rose-500/20 text-rose-800 dark:text-rose-300 font-semibold border border-rose-500/30">
+                  Proof-of-Work Dossier Compiled
+                </span>
+              </div>
+
+              <div className="grid sm:grid-cols-2 gap-4 text-xs font-sans">
+                <div className="p-4 rounded-xl bg-white dark:bg-[#141414] border border-slate-200 dark:border-white/[0.08] space-y-1">
+                  <p className="font-semibold text-rose-600 dark:text-rose-400 font-mono text-[11px] uppercase tracking-wider">
+                    Client Allegation / Refund Request:
+                  </p>
+                  <p className="text-slate-600 dark:text-slate-300 italic">
+                    "{agreement.disputeProof?.clientAllegation || agreement.disputeReason || agreement.refund?.reason || "Work disputed"}"
+                  </p>
+                </div>
+                <div className="p-4 rounded-xl bg-white dark:bg-[#141414] border border-slate-200 dark:border-white/[0.08] space-y-1">
+                  <p className="font-semibold text-emerald-600 dark:text-emerald-400 font-mono text-[11px] uppercase tracking-wider">
+                    Contributor Appeal &amp; Justification:
+                  </p>
+                  <p className="text-slate-600 dark:text-slate-300 italic">
+                    "{agreement.disputeProof?.justification || "Contributor claims work was legitimately delivered with verified commits."}"
+                  </p>
+                </div>
+              </div>
+
+              {agreement.disputeProof?.gitMetrics && (
+                <div className="space-y-2">
+                  <p className="text-[11px] font-mono font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    Immutable Git Proof Bundle Captured at Freeze:
+                  </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 rounded-xl bg-slate-900 text-white text-xs font-mono border border-slate-800">
+                    <div>
+                      <span className="text-slate-400 block text-[10px]">Verified Commits</span>
+                      <span className="font-bold text-base text-emerald-400">{agreement.disputeProof.gitMetrics.commitsCount}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[10px]">Changed Files</span>
+                      <span className="font-bold text-base text-indigo-400">{agreement.disputeProof.gitMetrics.changedFilesCount}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[10px]">Lines Added</span>
+                      <span className="font-bold text-base text-emerald-400">+{agreement.disputeProof.gitMetrics.linesAdded}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[10px]">Lines Deleted</span>
+                      <span className="font-bold text-base text-rose-400">-{agreement.disputeProof.gitMetrics.linesDeleted}</span>
+                    </div>
+                  </div>
+                  <div className="p-3 bg-slate-900/80 rounded-xl text-[11px] font-mono text-slate-300 border border-slate-800 space-y-1">
+                    <div className="flex items-center justify-between text-[10px] text-slate-400">
+                      <span>Base Commit: <code className="text-indigo-300">{agreement.disputeProof.gitMetrics.baseCommit?.slice(0, 12)}...</code></span>
+                      <span>Head Commit: <code className="text-indigo-300">{agreement.disputeProof.gitMetrics.headCommit?.slice(0, 12)}...</code></span>
+                    </div>
+                    {agreement.disputeProof.gitMetrics.reportHash && (
+                      <p className="text-slate-400 truncate">
+                        Merkle Session Hash: <code className="text-emerald-400">{agreement.disputeProof.gitMetrics.reportHash}</code>
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  className="btn-primary text-xs py-2.5 px-4 shadow-md"
+                  onClick={() => {
+                    setArbitrateWorkerPayout(Math.round(agreement.budget * 0.5 * 100) / 100);
+                    setArbitrateOpen(true);
+                  }}
+                >
+                  Resolve Dispute via Binding Arbitration &rarr;
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Real-Time Live Streaming Meter */}
           {agreement.status !== "PENDING_FUNDING" && (
@@ -761,13 +1241,47 @@ export default function AgreementDetail() {
                 {agreement.status === "DISPUTED" && (
                   <div className="p-3.5 bg-rose-50 dark:bg-rose-500/10 rounded-xl border border-rose-200 dark:border-rose-500/20 text-xs text-rose-600 dark:text-rose-300 space-y-2">
                     <p className="font-bold">Stream Frozen &amp; Disputed</p>
-                    <p>{agreement.disputeReason || "Stream has been frozen by the client for mediation."}</p>
+                    <p>{agreement.disputeReason || agreement.refund?.reason || "Stream has been frozen in non-custodial dispute."}</p>
                     <button
-                      className="btn-danger w-full mt-2 text-xs"
-                      onClick={() => setCancelOpen(true)}
+                      className="btn-primary w-full mt-2 text-xs"
+                      onClick={() => {
+                        setArbitrateWorkerPayout(Math.round(agreement.budget * 0.5 * 100) / 100);
+                        setArbitrateOpen(true);
+                      }}
                     >
-                      Settle &amp; Cancel Stream
+                      Arbitrate &amp; Settle Vault
                     </button>
+                  </div>
+                )}
+
+                {agreement.status === "SETTLEMENT_OFFERED" && (
+                  <div className="space-y-2.5 p-3.5 bg-indigo-50 dark:bg-[#6366F1]/10 rounded-xl border border-indigo-200 dark:border-indigo-500/30 text-xs">
+                    <p className="font-semibold text-indigo-900 dark:text-indigo-200">
+                      Settlement Pending
+                    </p>
+                    <p className="text-slate-600 dark:text-slate-400 text-[11px] font-sans">
+                      Proposed payout: <strong>{formatEth(agreement.settlement?.workerPayout)}</strong> to contributor, <strong>{formatEth(agreement.settlement?.clientRefund)}</strong> refunded to you.
+                    </p>
+                    {agreement.settlement?.proposedBy === agreement.freelancerId && (
+                      <button
+                        className="btn-primary w-full text-xs"
+                        onClick={handleAcceptSettlement}
+                        disabled={submittingAction}
+                      >
+                        Accept Contributor Counter-Offer
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {agreement.status === "REFUND_PENDING" && (
+                  <div className="space-y-2.5 p-3.5 bg-amber-50 dark:bg-amber-500/10 rounded-xl border border-amber-200 dark:border-amber-500/30 text-xs">
+                    <p className="font-semibold text-amber-900 dark:text-amber-200">
+                      100% Refund Challenging Active
+                    </p>
+                    <p className="text-slate-600 dark:text-slate-400 text-[11px] font-sans">
+                      Waiting for contributor challenge or acceptance within the 48-hour challenge window.
+                    </p>
                   </div>
                 )}
 
@@ -777,13 +1291,25 @@ export default function AgreementDetail() {
                       className="h-10 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-mono text-xs font-bold uppercase tracking-wide transition-all shadow-md shadow-emerald-500/20 w-full"
                       onClick={() => setRatingModalOpen(true)}
                     >
-                      Approve &amp; Mint Attestation
+                      Approve &amp; Mint Attestation (100%)
                     </button>
                     <button className="btn-secondary w-full text-xs" onClick={() => setRevisionOpen(true)}>
                       Request Revision
                     </button>
-                    <button className="btn-danger w-full text-xs" onClick={() => setRejectOpen(true)}>
-                      Reject Submission
+                    <button
+                      className="h-10 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-mono text-xs font-bold uppercase tracking-wide transition-all shadow-md w-full"
+                      onClick={() => {
+                        setWorkerPayout(Math.round(agreement.budget * 0.6 * 100) / 100);
+                        setSettlementOpen(true);
+                      }}
+                    >
+                      Offer Partial Settlement
+                    </button>
+                    <button
+                      className="btn-danger w-full text-xs"
+                      onClick={() => setRefundOpen(true)}
+                    >
+                      Claim 100% Full Refund
                     </button>
                   </div>
                 )}
@@ -796,9 +1322,17 @@ export default function AgreementDetail() {
                 )}
 
                 {agreement.status === "CANCELLED" && (
-                  <p className="text-xs text-rose-500 dark:text-rose-400 font-sans p-3 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20">
-                    This stream was cancelled and unearned funds were refunded.
-                  </p>
+                  <div className="space-y-3">
+                    <p className="text-xs text-rose-500 dark:text-rose-400 font-sans p-3 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20">
+                      This stream was cancelled and unearned funds were refunded.
+                    </p>
+                    <button
+                      className="btn-primary w-full text-xs shadow-lg shadow-indigo-500/25"
+                      onClick={openReassignModal}
+                    >
+                      Reassign Project to New Contributor &rarr;
+                    </button>
+                  </div>
                 )}
               </>
             )}
@@ -837,6 +1371,89 @@ export default function AgreementDetail() {
                       onClick={() => setRatingModalOpen(true)}
                     >
                       Approve &amp; Mint Attestation (Demo Mode)
+                    </button>
+                  </div>
+                )}
+
+                {agreement.status === "SETTLEMENT_OFFERED" && (
+                  <div className="space-y-2.5">
+                    <div className="p-3.5 bg-indigo-50 dark:bg-[#6366F1]/10 rounded-xl border border-indigo-200 dark:border-indigo-500/30 text-xs text-slate-700 dark:text-slate-300 space-y-1">
+                      <p className="font-semibold text-indigo-900 dark:text-indigo-200">
+                        Partial Settlement Offered
+                      </p>
+                      <p className="text-[11px] font-sans">
+                        Client offered a payout of <strong>{formatEth(agreement.settlement?.workerPayout)}</strong>.
+                      </p>
+                    </div>
+                    {agreement.settlement?.proposedBy === agreement.clientId && (
+                      <>
+                        <button
+                          className="btn-primary w-full text-xs"
+                          onClick={handleAcceptSettlement}
+                          disabled={submittingAction}
+                        >
+                          Accept Payout ({formatEth(agreement.settlement?.workerPayout)})
+                        </button>
+                        <button
+                          className="btn-secondary w-full text-xs"
+                          onClick={() => {
+                            setCounterPayout(agreement.settlement?.workerPayout || 0);
+                            setCounterOpen(true);
+                          }}
+                        >
+                          Counter-Offer Payout
+                        </button>
+                      </>
+                    )}
+                    <button
+                      className="btn-danger w-full text-xs"
+                      onClick={() => {
+                        setDisputeReason("Rejecting partial settlement. Requesting arbitration with cryptographic Git proofs.");
+                        setDisputeOpen(true);
+                      }}
+                    >
+                      Reject &amp; Escalate Dispute
+                    </button>
+                  </div>
+                )}
+
+                {agreement.status === "REFUND_PENDING" && (
+                  <div className="space-y-2.5">
+                    <div className="p-3.5 bg-amber-50 dark:bg-amber-500/10 rounded-xl border border-amber-200 dark:border-amber-500/30 text-xs text-slate-700 dark:text-slate-300 space-y-1">
+                      <p className="font-semibold text-amber-900 dark:text-amber-200">
+                        100% Refund Challenge Window
+                      </p>
+                      <p className="text-[11px] font-sans">
+                        Client claimed 100% refund. You have 48h to appeal and submit your cryptographic Git proofs.
+                      </p>
+                    </div>
+                    <button
+                      className="h-10 px-4 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-mono text-xs font-bold uppercase tracking-wide transition-all shadow-md w-full"
+                      onClick={() => setAppealOpen(true)}
+                    >
+                      Appeal &amp; Lock Git Proofs
+                    </button>
+                    <button
+                      className="btn-secondary w-full text-xs"
+                      onClick={handleAcceptRefund}
+                    >
+                      Accept Refund &amp; Close
+                    </button>
+                  </div>
+                )}
+
+                {agreement.status === "DISPUTED" && (
+                  <div className="p-3.5 bg-rose-50 dark:bg-rose-500/10 rounded-xl border border-rose-200 dark:border-rose-500/20 text-xs text-rose-600 dark:text-rose-300 space-y-2">
+                    <p className="font-bold">Stream Frozen in Dispute</p>
+                    <p className="text-[11px]">Git proof dossier locked. Mutual arbitration is active.</p>
+                    <button
+                      className="btn-primary w-full text-xs"
+                      onClick={() => {
+                        setArbitrateWorkerPayout(Math.round(agreement.budget * 0.5 * 100) / 100);
+                        setArbitrateOpen(true);
+                      }}
+                    >
+                      Arbitrate &amp; Settle Vault
                     </button>
                   </div>
                 )}
@@ -1099,6 +1716,447 @@ export default function AgreementDetail() {
           Freezing immediately halts stream accrual and blocks on-demand withdrawals from the vault.
         </p>
         {actionError && <p className="field-error">{actionError}</p>}
+      </Modal>
+
+      {/* Partial Settlement Proposal Modal */}
+      <Modal
+        open={settlementOpen}
+        onClose={() => {
+          setSettlementOpen(false);
+          setActionError(null);
+        }}
+        title="Offer Partial Settlement"
+        subtitle={`Total agreement budget: ${formatEth(agreement.budget)}`}
+        footer={
+          <>
+            <button className="btn-secondary" onClick={() => setSettlementOpen(false)}>
+              Cancel
+            </button>
+            <button
+              className="btn-primary"
+              onClick={handleProposeSettlement}
+              disabled={submittingAction}
+            >
+              {submittingAction ? "Submitting..." : "Propose Settlement"}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="field-label mb-0">Contributor Payout Amount</label>
+              <span className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                {formatEth(Number(workerPayout) || 0)}
+              </span>
+            </div>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              max={agreement.budget}
+              className="input font-mono text-sm"
+              value={workerPayout}
+              onChange={(e) => setWorkerPayout(e.target.value)}
+            />
+            <input
+              type="range"
+              min="0"
+              max={agreement.budget}
+              step="0.01"
+              className="w-full mt-2 accent-indigo-500 cursor-pointer"
+              value={workerPayout || 0}
+              onChange={(e) => setWorkerPayout(Number(e.target.value))}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 dark:bg-[#141414] rounded-xl border border-slate-200 dark:border-white/[0.06] text-xs font-mono">
+            <div>
+              <span className="text-slate-500 dark:text-slate-400 block text-[10px]">Contributor Earns</span>
+              <span className="font-bold text-emerald-600 dark:text-emerald-400 text-sm">
+                {formatEth(Number(workerPayout) || 0)}
+              </span>
+            </div>
+            <div>
+              <span className="text-slate-500 dark:text-slate-400 block text-[10px]">Refunded to You</span>
+              <span className="font-bold text-slate-900 dark:text-white text-sm">
+                {formatEth(Math.max(0, agreement.budget - (Number(workerPayout) || 0)))}
+              </span>
+            </div>
+          </div>
+
+          <div>
+            <label className="field-label">Rationale &amp; Constructive Feedback (Required)</label>
+            <textarea
+              rows={4}
+              className={`input resize-none ${actionError ? "input-error" : ""}`}
+              placeholder="Explain why this split is fair (e.g., delivered core backend APIs, but incomplete frontend styling)..."
+              value={settlementReason}
+              onChange={(e) => {
+                setSettlementReason(e.target.value);
+                setActionError(null);
+              }}
+            />
+          </div>
+          {actionError && <p className="field-error">{actionError}</p>}
+        </div>
+      </Modal>
+
+      {/* Counter-Offer Settlement Modal */}
+      <Modal
+        open={counterOpen}
+        onClose={() => {
+          setCounterOpen(false);
+          setActionError(null);
+        }}
+        title="Counter-Offer Settlement Split"
+        subtitle={`Total agreement budget: ${formatEth(agreement.budget)}`}
+        footer={
+          <>
+            <button className="btn-secondary" onClick={() => setCounterOpen(false)}>
+              Cancel
+            </button>
+            <button
+              className="btn-primary"
+              onClick={handleCounterSettlement}
+              disabled={submittingAction}
+            >
+              {submittingAction ? "Submitting..." : "Submit Counter-Offer"}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="field-label mb-0">Adjusted Contributor Payout</label>
+              <span className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                {formatEth(Number(counterPayout) || 0)}
+              </span>
+            </div>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              max={agreement.budget}
+              className="input font-mono text-sm"
+              value={counterPayout}
+              onChange={(e) => setCounterPayout(e.target.value)}
+            />
+            <input
+              type="range"
+              min="0"
+              max={agreement.budget}
+              step="0.01"
+              className="w-full mt-2 accent-indigo-500 cursor-pointer"
+              value={counterPayout || 0}
+              onChange={(e) => setCounterPayout(Number(e.target.value))}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 dark:bg-[#141414] rounded-xl border border-slate-200 dark:border-white/[0.06] text-xs font-mono">
+            <div>
+              <span className="text-slate-500 dark:text-slate-400 block text-[10px]">Contributor Earns</span>
+              <span className="font-bold text-emerald-600 dark:text-emerald-400 text-sm">
+                {formatEth(Number(counterPayout) || 0)}
+              </span>
+            </div>
+            <div>
+              <span className="text-slate-500 dark:text-slate-400 block text-[10px]">Refunded to Client</span>
+              <span className="font-bold text-slate-900 dark:text-white text-sm">
+                {formatEth(Math.max(0, agreement.budget - (Number(counterPayout) || 0)))}
+              </span>
+            </div>
+          </div>
+
+          <div>
+            <label className="field-label">Justification for Counter-Offer (Required)</label>
+            <textarea
+              rows={4}
+              className={`input resize-none ${actionError ? "input-error" : ""}`}
+              placeholder="Explain why the adjusted payout represents fair compensation for work delivered..."
+              value={counterReason}
+              onChange={(e) => {
+                setCounterReason(e.target.value);
+                setActionError(null);
+              }}
+            />
+          </div>
+          {actionError && <p className="field-error">{actionError}</p>}
+        </div>
+      </Modal>
+
+      {/* 100% Full Refund Modal */}
+      <Modal
+        open={refundOpen}
+        onClose={() => {
+          setRefundOpen(false);
+          setActionError(null);
+        }}
+        title="Claim 100% Full Refund"
+        subtitle={agreement.title}
+        footer={
+          <>
+            <button className="btn-secondary" onClick={() => setRefundOpen(false)}>
+              Cancel
+            </button>
+            <button
+              className="h-10 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-mono text-xs font-semibold uppercase tracking-wide transition-all shadow-md"
+              onClick={handleRequestFullRefund}
+              disabled={submittingAction}
+            >
+              {submittingAction ? "Processing..." : "Claim 100% Refund"}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="p-3.5 bg-amber-50 dark:bg-amber-500/10 rounded-xl border border-amber-200 dark:border-amber-500/20 text-xs text-amber-800 dark:text-amber-300 space-y-1">
+            <p className="font-semibold">⚠️ 48-Hour Contributor Challenge Window Notice</p>
+            <p className="text-[11px] leading-relaxed">
+              Requesting a full 100% refund initiates a challenge window. The contributor can accept the refund or appeal with cryptographic Git proof-of-work if work was genuinely delivered.
+            </p>
+          </div>
+
+          <div>
+            <label className="field-label">Reason for 100% Refund Claim (Required)</label>
+            <textarea
+              rows={4}
+              className={`input resize-none ${actionError ? "input-error" : ""}`}
+              placeholder="Explain in detail why the deliverable failed to meet expectations or was not delivered..."
+              value={refundReason}
+              onChange={(e) => {
+                setRefundReason(e.target.value);
+                setActionError(null);
+              }}
+            />
+          </div>
+          {actionError && <p className="field-error">{actionError}</p>}
+        </div>
+      </Modal>
+
+      {/* Appeal Rejection Modal */}
+      <Modal
+        open={appealOpen}
+        onClose={() => {
+          setAppealOpen(false);
+          setActionError(null);
+        }}
+        title="Appeal Rejection & Lock Escrow"
+        subtitle={agreement.title}
+        footer={
+          <>
+            <button className="btn-secondary" onClick={() => setAppealOpen(false)}>
+              Cancel
+            </button>
+            <button
+              className="h-10 px-4 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-mono text-xs font-semibold uppercase tracking-wide transition-all shadow-md"
+              onClick={handleAppealRefund}
+              disabled={submittingAction}
+            >
+              {submittingAction ? "Submitting..." : "Submit Appeal & Lock Git Proofs"}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="p-3.5 bg-indigo-50 dark:bg-[#6366F1]/10 rounded-xl border border-indigo-200 dark:border-indigo-500/20 text-xs text-indigo-800 dark:text-indigo-300 space-y-1 font-mono">
+            <p className="font-semibold">Cryptographic Proof-of-Work Verification</p>
+            <p className="text-[11px] leading-relaxed font-sans">
+              Appealing will freeze the smart contract vault in dispute and generate an immutable evidence dossier featuring your commit range, changed files, line diffs, and Merkle session hash.
+            </p>
+          </div>
+
+          <div>
+            <label className="field-label">Your Justification &amp; Defense (Required)</label>
+            <textarea
+              rows={4}
+              className={`input resize-none ${actionError ? "input-error" : ""}`}
+              placeholder="Detail the work you completed, tests run, commits pushed, and why a 100% refund is unjustified..."
+              value={appealJustification}
+              onChange={(e) => {
+                setAppealJustification(e.target.value);
+                setActionError(null);
+              }}
+            />
+          </div>
+          {actionError && <p className="field-error">{actionError}</p>}
+        </div>
+      </Modal>
+
+      {/* Arbitration Modal */}
+      <Modal
+        open={arbitrateOpen}
+        onClose={() => {
+          setArbitrateOpen(false);
+          setActionError(null);
+        }}
+        title="Dispute Arbitration & Resolution"
+        subtitle={`Total disputed escrow: ${formatEth(agreement.budget)}`}
+        footer={
+          <>
+            <button className="btn-secondary" onClick={() => setArbitrateOpen(false)}>
+              Cancel
+            </button>
+            <button
+              className="btn-primary"
+              onClick={handleArbitrateDispute}
+              disabled={submittingAction}
+            >
+              {submittingAction ? "Executing..." : "Execute Binding Ruling"}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="field-label">Arbitration Decision</label>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                className={`py-2 px-3 rounded-xl border text-xs font-mono font-medium transition-all ${
+                  arbitrateDecision === "SPLIT"
+                    ? "bg-indigo-600 text-white border-indigo-600"
+                    : "bg-slate-50 dark:bg-white/[0.05] text-slate-700 dark:text-slate-300 border-slate-200 dark:border-white/[0.08]"
+                }`}
+                onClick={() => setArbitrateDecision("SPLIT")}
+              >
+                Fair Split
+              </button>
+              <button
+                type="button"
+                className={`py-2 px-3 rounded-xl border text-xs font-mono font-medium transition-all ${
+                  arbitrateDecision === "CLIENT_FAVORED"
+                    ? "bg-rose-600 text-white border-rose-600"
+                    : "bg-slate-50 dark:bg-white/[0.05] text-slate-700 dark:text-slate-300 border-slate-200 dark:border-white/[0.08]"
+                }`}
+                onClick={() => setArbitrateDecision("CLIENT_FAVORED")}
+              >
+                100% Client
+              </button>
+              <button
+                type="button"
+                className={`py-2 px-3 rounded-xl border text-xs font-mono font-medium transition-all ${
+                  arbitrateDecision === "WORKER_FAVORED"
+                    ? "bg-emerald-600 text-white border-emerald-600"
+                    : "bg-slate-50 dark:bg-white/[0.05] text-slate-700 dark:text-slate-300 border-slate-200 dark:border-white/[0.08]"
+                }`}
+                onClick={() => setArbitrateDecision("WORKER_FAVORED")}
+              >
+                100% Worker
+              </button>
+            </div>
+          </div>
+
+          {arbitrateDecision === "SPLIT" && (
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="field-label mb-0">Worker Award Amount</label>
+                <span className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                  {formatEth(Number(arbitrateWorkerPayout) || 0)}
+                </span>
+              </div>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                max={agreement.budget}
+                className="input font-mono text-sm"
+                value={arbitrateWorkerPayout}
+                onChange={(e) => setArbitrateWorkerPayout(e.target.value)}
+              />
+              <p className="text-[11px] text-slate-500 font-mono mt-1">
+                Client refund will be: <strong>{formatEth(Math.max(0, agreement.budget - (Number(arbitrateWorkerPayout) || 0)))}</strong>
+              </p>
+            </div>
+          )}
+
+          <div>
+            <label className="field-label">Arbitrator Ruling Notes</label>
+            <textarea
+              rows={3}
+              className="input resize-none"
+              placeholder="Summary of evidence reviewed and rationale for the decision..."
+              value={arbitrateNotes}
+              onChange={(e) => setArbitrateNotes(e.target.value)}
+            />
+          </div>
+          {actionError && <p className="field-error">{actionError}</p>}
+        </div>
+      </Modal>
+
+      {/* Reassign Contributor Modal */}
+      <Modal
+        open={reassignOpen}
+        onClose={() => {
+          setReassignOpen(false);
+          setActionError(null);
+        }}
+        title="Reassign Project to New Contributor"
+        subtitle="Select a verified talent from the network to reactivate this stream covenant."
+        footer={
+          <>
+            <button className="btn-secondary" onClick={() => setReassignOpen(false)}>
+              Cancel
+            </button>
+            <button
+              className="btn-primary"
+              onClick={handleReassign}
+              disabled={submittingAction || !selectedFreelancerId}
+            >
+              {submittingAction ? "Reassigning..." : "Reassign & Reactivate"}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          {loadingTalent ? (
+            <div className="p-8 text-center text-xs font-mono text-slate-500">
+              Loading available contributors...
+            </div>
+          ) : talentList.length === 0 ? (
+            <div className="p-6 text-center text-xs font-mono text-slate-500 bg-slate-50 dark:bg-white/[0.04] rounded-xl">
+              No other available contributors found.
+            </div>
+          ) : (
+            <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+              {talentList.map((tal) => (
+                <div
+                  key={tal.id}
+                  onClick={() => setSelectedFreelancerId(tal.id)}
+                  className={`p-3.5 rounded-xl border cursor-pointer transition-all flex items-center justify-between ${
+                    selectedFreelancerId === tal.id
+                      ? "border-indigo-500 bg-indigo-50/50 dark:bg-indigo-500/15 shadow-sm"
+                      : "border-slate-200 dark:border-white/[0.08] hover:border-slate-300 dark:hover:border-white/[0.15]"
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <Avatar user={tal} size="md" rounded="rounded-xl" showBorder />
+                    <div>
+                      <p className="font-semibold text-slate-900 dark:text-white text-xs">
+                        {tal.name}
+                      </p>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono truncate max-w-[200px]">
+                        {tal.title || tal.skills?.slice(0, 3).join(", ") || "Contributor"}
+                      </p>
+                      {tal.hourlyRate && (
+                        <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono mt-0.5">
+                          {formatEth(tal.hourlyRate)}/hr
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-right font-mono">
+                    <span className="text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-200 dark:border-indigo-500/20">
+                      Rep: {tal.reputationScore || 100} pts
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {actionError && <p className="field-error">{actionError}</p>}
+        </div>
       </Modal>
     </AppLayout>
   );

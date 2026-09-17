@@ -79,6 +79,23 @@ export const api = {
   dispute: (id, reason) => request(`/agreements/${id}/dispute`, { method: "POST", body: { reason } }),
   resolveDispute: (id, payload) => request(`/agreements/${id}/dispute/resolve`, { method: "POST", body: payload }),
 
+  proposeSettlement: (id, workerPayout, reason) =>
+    request(`/agreements/${id}/settlement/propose`, { method: "POST", body: { workerPayout, reason } }),
+  acceptSettlement: (id) =>
+    request(`/agreements/${id}/settlement/accept`, { method: "POST" }),
+  counterSettlement: (id, workerPayout, reason) =>
+    request(`/agreements/${id}/settlement/counter`, { method: "POST", body: { workerPayout, reason } }),
+  requestFullRefund: (id, reason) =>
+    request(`/agreements/${id}/refund/request`, { method: "POST", body: { reason } }),
+  appealRefund: (id, justification) =>
+    request(`/agreements/${id}/refund/appeal`, { method: "POST", body: { justification } }),
+  acceptRefund: (id) =>
+    request(`/agreements/${id}/refund/accept`, { method: "POST" }),
+  arbitrateDispute: (id, payload) =>
+    request(`/agreements/${id}/arbitrate`, { method: "POST", body: payload }),
+  reassignAgreement: (id, newFreelancerId) =>
+    request(`/agreements/${id}/reassign`, { method: "POST", body: { newFreelancerId } }),
+
   reputation: (userId) => request(`/reputation${userId ? `/${userId}` : ""}`),
   attestations: (params) => {
     const query = params ? new URLSearchParams(params).toString() : "";

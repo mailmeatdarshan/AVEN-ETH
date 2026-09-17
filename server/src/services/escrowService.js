@@ -984,9 +984,9 @@ export function rejectSubmission(agreementId, userId, reason) {
     });
   }
 
-  const client = db.users.findById(clientId);
+  const client = db.users.findById(agreement.clientId);
   if (client && unearnedRefund > 0) {
-    db.users.update(clientId, {
+    db.users.update(client.id, {
       walletBalance: Math.round(((client.walletBalance || 0) + unearnedRefund) * 10000) / 10000,
     });
   }
@@ -1005,6 +1005,511 @@ export function rejectSubmission(agreementId, userId, reason) {
   });
 
   return { agreement: updated, submission };
+}
+
+export function proposeSettlement(agreementId, clientId, { workerPayout, reason }) {
+  const agreement = loadAgreementOr404(agreementId);
+  if (agreement.clientId !== clientId) throw new DomainError("Only the client can propose a settlement.", 403);
+  if (!["SUBMITTED", "IN_PROGRESS", "PAUSED", "REVISION_REQUESTED", "DISPUTED"].includes(agreement.status)) {
+    throw new DomainError(`Cannot propose settlement while agreement is ${agreement.status}.`);
+  }
+
+  const payoutNum = Number(workerPayout);
+  if (isNaN(payoutNum) || payoutNum < 0 || payoutNum > agreement.budget) {
+    throw new DomainError(`Worker payout must be between 0 and total budget (${agreement.budget} ETH).`);
+  }
+  if (!reason || reason.trim().length < 5) {
+    throw new DomainError("A valid rationale (at least 5 characters) is required for the settlement offer.");
+  }
+
+  assertTransition(agreement.status, "SETTLEMENT_OFFERED");
+
+  const clientRefund = Math.max(0, Math.round((agreement.budget - payoutNum) * 1e6) / 1e6);
+
+  const proposal = {
+    proposedBy: "CLIENT",
+    proposerId: clientId,
+    workerPayout: payoutNum,
+    clientRefund,
+    reason: reason.trim(),
+    proposedAt: nowIso(),
+    history: [
+      ...(agreement.settlementProposal?.history || []),
+      {
+        proposedBy: "CLIENT",
+        proposerId: clientId,
+        workerPayout: payoutNum,
+        clientRefund,
+        reason: reason.trim(),
+        timestamp: nowIso(),
+      }
+    ],
+  };
+
+  const updated = touch(agreementId, {
+    status: "SETTLEMENT_OFFERED",
+    settlementProposal: proposal,
+  });
+
+  recordTransaction({
+    agreementId,
+    fromUser: clientId,
+    toUser: agreement.freelancerId,
+    type: "SETTLEMENT_OFFERED",
+    amount: payoutNum,
+    data: { reason: reason.trim(), workerPayout: payoutNum, clientRefund },
+  });
+
+  notify(agreement.freelancerId, {
+    type: "SETTLEMENT_OFFERED",
+    title: "Partial Settlement Proposed",
+    message: `${agreement.title}: Client proposed paying ${payoutNum} ETH. Reason: ${reason.trim()}`,
+    agreementId,
+  });
+
+  return { agreement: updated };
+}
+
+export function acceptSettlement(agreementId, userId) {
+  const agreement = loadAgreementOr404(agreementId);
+  const proposal = agreement.settlementProposal;
+  if (!proposal) throw new DomainError("No active settlement proposal to accept.");
+  if (agreement.status !== "SETTLEMENT_OFFERED") throw new DomainError("Agreement is not in settlement offer state.");
+
+  if (proposal.proposerId === userId) {
+    throw new DomainError("You cannot accept your own proposal. Awaiting the other party's response.");
+  }
+  if (agreement.clientId !== userId && agreement.freelancerId !== userId) {
+    throw new DomainError("Unauthorized to accept this settlement.", 403);
+  }
+
+  assertTransition(agreement.status, "COMPLETED");
+
+  const workerPayout = Number(proposal.workerPayout || 0);
+  const clientRefund = Number(proposal.clientRefund || 0);
+  const totalWithdrawn = Number(agreement.totalWithdrawn || 0);
+
+  const netWorkerPayout = Math.max(0, Math.round((workerPayout - totalWithdrawn) * 1e6) / 1e6);
+
+  const freelancer = db.users.findById(agreement.freelancerId);
+  if (freelancer && netWorkerPayout > 0) {
+    db.users.update(freelancer.id, {
+      walletBalance: Math.round(((freelancer.walletBalance || 0) + netWorkerPayout) * 1e6) / 1e6,
+    });
+  }
+
+  const client = db.users.findById(agreement.clientId);
+  if (client && clientRefund > 0) {
+    db.users.update(client.id, {
+      walletBalance: Math.round(((client.walletBalance || 0) + clientRefund) * 1e6) / 1e6,
+    });
+  }
+
+  const attestation = db.attestations.insert({
+    id: nextId("att"),
+    streamId: agreementId,
+    recipient: agreement.freelancerId,
+    sender: agreement.clientId,
+    amountPaid: workerPayout,
+    kind: "Settlement",
+    category: agreement.category || "Freelance",
+    clientConfirmed: true,
+    autoReleased: false,
+    activeDurationSeconds: agreement.durationSeconds || 18000,
+    reportHash: sha256(`settlement-${agreementId}-${Date.now()}`),
+    title: `${agreement.title} (Mutual Settlement)`,
+    rating: 4,
+    review: `Settled mutually: ${proposal.reason}`,
+    createdAt: nowIso(),
+  });
+
+  const updated = touch(agreementId, {
+    status: "COMPLETED",
+    escrowBalance: 0,
+    totalWithdrawn: workerPayout,
+    settlementResolvedAt: nowIso(),
+    settlementAcceptedBy: userId,
+  });
+
+  recordTransaction({
+    agreementId,
+    fromUser: "ESCROW_CONTRACT",
+    toUser: agreement.freelancerId,
+    type: "SETTLEMENT_EXECUTED",
+    amount: netWorkerPayout,
+    data: { workerPayout, clientRefund, attestationId: attestation.id },
+  });
+
+  notify(agreement.clientId, {
+    type: "SETTLEMENT_EXECUTED",
+    title: "Settlement Completed",
+    message: `${agreement.title}: Settlement accepted. ${workerPayout} ETH paid to worker, ${clientRefund} ETH refunded to client.`,
+    agreementId,
+  });
+  notify(agreement.freelancerId, {
+    type: "SETTLEMENT_EXECUTED",
+    title: "Settlement Completed",
+    message: `${agreement.title}: Settlement accepted. ${workerPayout} ETH paid to your wallet.`,
+    agreementId,
+  });
+
+  return { agreement: updated, attestation };
+}
+
+export function counterSettlement(agreementId, userId, { workerPayout, reason }) {
+  const agreement = loadAgreementOr404(agreementId);
+  if (agreement.clientId !== userId && agreement.freelancerId !== userId) {
+    throw new DomainError("Unauthorized.", 403);
+  }
+  if (!["SETTLEMENT_OFFERED", "REFUND_PENDING", "DISPUTED"].includes(agreement.status)) {
+    throw new DomainError(`Cannot counter-propose while status is ${agreement.status}.`);
+  }
+
+  const payoutNum = Number(workerPayout);
+  if (isNaN(payoutNum) || payoutNum < 0 || payoutNum > agreement.budget) {
+    throw new DomainError(`Worker payout must be between 0 and ${agreement.budget} ETH.`);
+  }
+  if (!reason || reason.trim().length < 5) {
+    throw new DomainError("A justification (min 5 characters) is required for the counter-proposal.");
+  }
+
+  const isClient = agreement.clientId === userId;
+  const proposedBy = isClient ? "CLIENT" : "FREELANCER";
+  const recipientId = isClient ? agreement.freelancerId : agreement.clientId;
+  const clientRefund = Math.max(0, Math.round((agreement.budget - payoutNum) * 1e6) / 1e6);
+
+  const proposal = {
+    proposedBy,
+    proposerId: userId,
+    workerPayout: payoutNum,
+    clientRefund,
+    reason: reason.trim(),
+    proposedAt: nowIso(),
+    history: [
+      ...(agreement.settlementProposal?.history || []),
+      {
+        proposedBy,
+        proposerId: userId,
+        workerPayout: payoutNum,
+        clientRefund,
+        reason: reason.trim(),
+        timestamp: nowIso(),
+      }
+    ],
+  };
+
+  assertTransition(agreement.status, "SETTLEMENT_OFFERED");
+
+  const updated = touch(agreementId, {
+    status: "SETTLEMENT_OFFERED",
+    settlementProposal: proposal,
+  });
+
+  recordTransaction({
+    agreementId,
+    fromUser: userId,
+    toUser: recipientId,
+    type: "SETTLEMENT_COUNTERED",
+    amount: payoutNum,
+    data: { proposedBy, workerPayout: payoutNum, clientRefund, reason: reason.trim() },
+  });
+
+  notify(recipientId, {
+    type: "SETTLEMENT_COUNTERED",
+    title: "Counter Settlement Received",
+    message: `${agreement.title}: ${proposedBy === "CLIENT" ? "Client" : "Worker"} countered with ${payoutNum} ETH. Reason: ${reason.trim()}`,
+    agreementId,
+  });
+
+  return { agreement: updated };
+}
+
+export function requestFullRefund(agreementId, clientId, reason) {
+  const agreement = loadAgreementOr404(agreementId);
+  if (agreement.clientId !== clientId) throw new DomainError("Only client can request a full refund.", 403);
+  if (!["SUBMITTED", "IN_PROGRESS", "PAUSED", "REVISION_REQUESTED"].includes(agreement.status)) {
+    throw new DomainError(`Cannot request refund while agreement is ${agreement.status}.`);
+  }
+  if (!reason || reason.trim().length < 5) {
+    throw new DomainError("A clear reason (minimum 5 characters) is required for requesting a 100% refund.");
+  }
+
+  assertTransition(agreement.status, "REFUND_PENDING");
+
+  const session = db.workSessions.findOne((s) => s.agreementId === agreementId);
+  if (session && session.status === "RUNNING") {
+    const elapsed = Math.floor((Date.now() - new Date(session.startedAt).getTime()) / 1000);
+    db.workSessions.update(session.id, {
+      status: "PAUSED",
+      accumulatedSeconds: (session.accumulatedSeconds || 0) + Math.max(0, elapsed),
+      startedAt: null,
+    });
+  }
+
+  const refundRequest = {
+    clientId,
+    reason: reason.trim(),
+    requestedAt: nowIso(),
+    challengeWindowExpiresAt: new Date(Date.now() + 48 * 3600 * 1000).toISOString(),
+  };
+
+  const updated = touch(agreementId, {
+    status: "REFUND_PENDING",
+    refundRequest,
+  });
+
+  recordTransaction({
+    agreementId,
+    fromUser: clientId,
+    toUser: agreement.freelancerId,
+    type: "REFUND_REQUESTED",
+    amount: agreement.budget,
+    data: { reason: reason.trim() },
+  });
+
+  notify(agreement.freelancerId, {
+    type: "REFUND_REQUESTED",
+    title: "100% Refund Requested by Client",
+    message: `${agreement.title}: Client requested a full refund citing unsatisfactory work. You have 48 hours to accept or appeal.`,
+    agreementId,
+  });
+
+  return { agreement: updated };
+}
+
+export function appealRefund(agreementId, freelancerId, justification) {
+  const agreement = loadAgreementOr404(agreementId);
+  if (agreement.freelancerId !== freelancerId) throw new DomainError("Only the assigned worker can appeal.", 403);
+  if (agreement.status !== "REFUND_PENDING") {
+    throw new DomainError("Agreement is not currently in a pending refund state.");
+  }
+  if (!justification || justification.trim().length < 5) {
+    throw new DomainError("An appeal justification (minimum 5 characters) is required.");
+  }
+
+  assertTransition(agreement.status, "DISPUTED");
+
+  const session = db.workSessions.findOne((s) => s.agreementId === agreementId) || {};
+  const submission = db.submissions.findOne((s) => s.agreementId === agreementId) || {};
+
+  const proofBundle = {
+    commitsCount: submission.commitsCount || session.commitsCount || 0,
+    changedFilesCount: submission.changedFilesCount || session.changedFilesCount || 0,
+    linesAdded: submission.linesAdded || session.linesAdded || 0,
+    linesDeleted: submission.linesDeleted || session.linesDeleted || 0,
+    reportHash: submission.reportHash || session.reportHash || sha256(`pow-${agreementId}`),
+    branch: submission.branch || session.branch || "main",
+    accumulatedSeconds: session.accumulatedSeconds || 0,
+    justification: justification.trim(),
+    appealedAt: nowIso(),
+  };
+
+  const updated = touch(agreementId, {
+    status: "DISPUTED",
+    disputeEvidence: proofBundle,
+  });
+
+  recordTransaction({
+    agreementId,
+    fromUser: freelancerId,
+    toUser: "ESCROW_CONTRACT",
+    type: "REFUND_APPEALED",
+    amount: 0,
+    data: proofBundle,
+  });
+
+  notify(agreement.clientId, {
+    type: "STREAM_DISPUTED",
+    title: "Refund Appeal Filed by Worker",
+    message: `${agreement.title}: Worker appealed your refund request with Git Proof of Work. Escrow is locked for arbitration.`,
+    agreementId,
+  });
+
+  return { agreement: updated, proofBundle };
+}
+
+export function acceptRefund(agreementId, freelancerId) {
+  const agreement = loadAgreementOr404(agreementId);
+  if (agreement.freelancerId !== freelancerId) throw new DomainError("Only the worker can accept a refund.", 403);
+  if (agreement.status !== "REFUND_PENDING") throw new DomainError("No refund request pending.");
+
+  assertTransition(agreement.status, "CANCELLED");
+
+  const refundAmount = Number(agreement.escrowBalance || agreement.budget || 0);
+  const client = db.users.findById(agreement.clientId);
+  if (client && refundAmount > 0) {
+    db.users.update(client.id, {
+      walletBalance: Math.round(((client.walletBalance || 0) + refundAmount) * 1e6) / 1e6,
+    });
+  }
+
+  const updated = touch(agreementId, {
+    status: "CANCELLED",
+    escrowBalance: 0,
+    cancelledAt: nowIso(),
+    cancelReason: `Worker accepted 100% client refund: ${agreement.refundRequest?.reason || "Unsatisfactory work"}`,
+  });
+
+  recordTransaction({
+    agreementId,
+    fromUser: "ESCROW_CONTRACT",
+    toUser: agreement.clientId,
+    type: "REFUND_ACCEPTED",
+    amount: refundAmount,
+  });
+
+  notify(agreement.clientId, {
+    type: "REFUND_ACCEPTED",
+    title: "100% Refund Executed",
+    message: `${agreement.title}: Worker accepted refund. ${refundAmount} ETH refunded to your wallet. You can reassign this project.`,
+    agreementId,
+  });
+
+  return { agreement: updated };
+}
+
+export function arbitrateDispute(agreementId, { resolution, workerPayout = 0, clientRefund = 0, arbitratorNotes = "" } = {}) {
+  const agreement = loadAgreementOr404(agreementId);
+  if (agreement.status !== "DISPUTED") throw new DomainError("Agreement is not in disputed state.");
+
+  const currentEscrow = Number(agreement.escrowBalance || agreement.budget || 0);
+  const payout = Math.min(currentEscrow, Math.max(0, Number(workerPayout)));
+  const refund = Math.min(currentEscrow - payout, Math.max(0, Number(clientRefund || (currentEscrow - payout))));
+
+  const freelancer = db.users.findById(agreement.freelancerId);
+  const client = db.users.findById(agreement.clientId);
+
+  if (freelancer && payout > 0) {
+    db.users.update(freelancer.id, {
+      walletBalance: Math.round(((freelancer.walletBalance || 0) + payout) * 1e6) / 1e6,
+    });
+  }
+  if (client && refund > 0) {
+    db.users.update(client.id, {
+      walletBalance: Math.round(((client.walletBalance || 0) + refund) * 1e6) / 1e6,
+    });
+  }
+
+  const finalStatus = payout > 0 ? "COMPLETED" : "CANCELLED";
+  assertTransition("DISPUTED", finalStatus);
+
+  const updated = touch(agreementId, {
+    status: finalStatus,
+    escrowBalance: 0,
+    totalWithdrawn: Math.round(((agreement.totalWithdrawn || 0) + payout) * 1e6) / 1e6,
+    disputeResolvedAt: nowIso(),
+    arbitrationVerdict: {
+      resolution: resolution || (payout > 0 ? "PARTIAL_SPLIT" : "FULL_CLIENT_REFUND"),
+      workerPayout: payout,
+      clientRefund: refund,
+      arbitratorNotes: arbitratorNotes || "Resolved by Protocol Proof-of-Work Consensus",
+      resolvedAt: nowIso(),
+    }
+  });
+
+  recordTransaction({
+    agreementId,
+    fromUser: "ESCROW_CONTRACT",
+    toUser: agreement.freelancerId,
+    type: "ARBITRATION_EXECUTED",
+    amount: payout,
+    data: { workerPayout: payout, clientRefund: refund },
+  });
+
+  notify(agreement.clientId, {
+    type: "ARBITRATION_EXECUTED",
+    title: "Dispute Arbitrated",
+    message: `${agreement.title}: Dispute resolved. Worker awarded ${payout} ETH, client refunded ${refund} ETH.`,
+    agreementId,
+  });
+  notify(agreement.freelancerId, {
+    type: "ARBITRATION_EXECUTED",
+    title: "Dispute Arbitrated",
+    message: `${agreement.title}: Dispute resolved. Worker awarded ${payout} ETH, client refunded ${refund} ETH.`,
+    agreementId,
+  });
+
+  return { agreement: updated };
+}
+
+export function reassignAgreement(agreementId, clientId, newFreelancerId) {
+  const agreement = loadAgreementOr404(agreementId);
+  if (agreement.clientId !== clientId) throw new DomainError("Only the client can reassign this project.", 403);
+  if (!["CANCELLED", "DISPUTED", "REFUND_PENDING", "PENDING_FUNDING"].includes(agreement.status)) {
+    throw new DomainError(`Cannot reassign project while status is ${agreement.status}.`);
+  }
+
+  const newFreelancer = db.users.findById(newFreelancerId);
+  if (!newFreelancer || newFreelancer.role !== "FREELANCER") {
+    throw new DomainError("Selected user is not a valid freelancer.");
+  }
+  if (newFreelancerId === agreement.freelancerId) {
+    throw new DomainError("Project is already assigned to this freelancer.");
+  }
+
+  const client = db.users.findById(clientId);
+  const budget = Number(agreement.budget || 0);
+  let newEscrow = Number(agreement.escrowBalance || 0);
+
+  if (newEscrow < budget) {
+    const needed = Math.round((budget - newEscrow) * 1e6) / 1e6;
+    if ((client?.walletBalance || 0) < needed) {
+      throw new DomainError(`Insufficient wallet balance (${client?.walletBalance || 0} ETH) to re-fund ${needed} ETH escrow.`);
+    }
+    db.users.update(client.id, {
+      walletBalance: Math.round(((client.walletBalance || 0) - needed) * 1e6) / 1e6,
+    });
+    newEscrow = budget;
+  }
+
+  assertTransition(agreement.status, "FUNDED");
+
+  const existingSession = db.workSessions.findOne((s) => s.agreementId === agreementId);
+  if (existingSession) {
+    db.workSessions.update(existingSession.id, {
+      freelancerId: newFreelancerId,
+      status: "IDLE",
+      startedAt: null,
+      accumulatedSeconds: 0,
+      commitsCount: 0,
+      changedFilesCount: 0,
+      linesAdded: 0,
+      linesDeleted: 0,
+      reportHash: null,
+      notes: "Reassigned to new freelancer.",
+    });
+  }
+
+  const updated = touch(agreementId, {
+    freelancerId: newFreelancerId,
+    status: "FUNDED",
+    escrowBalance: newEscrow,
+    totalWithdrawn: 0,
+    startedAt: null,
+    pausedAt: null,
+    refundRequest: null,
+    settlementProposal: null,
+    reassignedAt: nowIso(),
+    previousFreelancerId: agreement.freelancerId,
+  });
+
+  recordTransaction({
+    agreementId,
+    fromUser: clientId,
+    toUser: newFreelancerId,
+    type: "PROJECT_REASSIGNED",
+    amount: budget,
+    data: { previousFreelancerId: agreement.freelancerId, newFreelancerId },
+  });
+
+  notify(newFreelancerId, {
+    type: "PROJECT_ASSIGNED",
+    title: "New Project Assigned",
+    message: `You have been assigned to "${agreement.title}" with a budget of ${budget} ETH.`,
+    agreementId,
+  });
+
+  return { agreement: updated };
 }
 
 export { DomainError };

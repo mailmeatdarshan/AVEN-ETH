@@ -17,7 +17,7 @@ router.get("/", (req, res) => {
   let lockedInEscrows = 0;
   const activeAgreements = db.agreements.find(
     (a) =>
-      ["FUNDED", "IN_PROGRESS", "PAUSED", "SUBMITTED", "REVISION_REQUESTED"].includes(a.status) &&
+      ["FUNDED", "IN_PROGRESS", "PAUSED", "SUBMITTED", "REVISION_REQUESTED", "SETTLEMENT_OFFERED", "REFUND_PENDING", "DISPUTED"].includes(a.status) &&
       (a.clientId === userId || a.freelancerId === userId)
   );
 
