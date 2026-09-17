@@ -126,6 +126,37 @@ async function loadInitialData() {
     } catch {}
   }
 
+function mergeById(listA = [], listB = []) {
+  const map = new Map();
+  if (Array.isArray(listB)) {
+    for (const item of listB) {
+      if (item && item.id) map.set(item.id, item);
+    }
+  }
+  if (Array.isArray(listA)) {
+    for (const item of listA) {
+      if (item && item.id) map.set(item.id, item);
+    }
+  }
+  return Array.from(map.values());
+}
+
+function mergeChain(chainA = [], chainB = []) {
+  const map = new Map();
+  if (Array.isArray(chainB)) {
+    for (const block of chainB) {
+      if (block && block.blockNumber != null) map.set(block.blockNumber, block);
+    }
+  }
+  if (Array.isArray(chainA)) {
+    for (const block of chainA) {
+      if (block && block.blockNumber != null) map.set(block.blockNumber, block);
+    }
+  }
+  const merged = Array.from(map.values()).sort((a, b) => a.blockNumber - b.blockNumber);
+  return merged.length > 0 ? merged : blockchain.chain;
+}
+
   if (fromNeon) {
     // If local file had extra users not in Neon, merge them
     if (Array.isArray(fileData?.users)) {
@@ -137,20 +168,17 @@ async function loadInitialData() {
       }
     }
 
-    if (Array.isArray(loadedState?.blockchain_chain) && loadedState.blockchain_chain.length > 0) {
-      blockchain.loadChain(loadedState.blockchain_chain);
-    } else if (Array.isArray(fileData?.chain) && fileData.chain.length > 0) {
-      blockchain.loadChain(fileData.chain);
-    }
+    const mergedChain = mergeChain(loadedState?.blockchain_chain, fileData?.chain);
+    blockchain.loadChain(mergedChain);
 
     const merged = {
       users: loadedUsers,
-      agreements: Array.isArray(loadedState?.agreements) && loadedState.agreements.length > 0 ? loadedState.agreements : (Array.isArray(fileData?.agreements) ? fileData.agreements : (seed.agreements || [])),
-      workSessions: Array.isArray(loadedState?.workSessions) && loadedState.workSessions.length > 0 ? loadedState.workSessions : (Array.isArray(fileData?.workSessions) ? fileData.workSessions : (seed.workSessions || [])),
-      submissions: Array.isArray(loadedState?.submissions) && loadedState.submissions.length > 0 ? loadedState.submissions : (Array.isArray(fileData?.submissions) ? fileData.submissions : (seed.submissions || [])),
-      attestations: Array.isArray(loadedState?.attestations) ? loadedState.attestations : (Array.isArray(fileData?.attestations) ? fileData.attestations : (seed.attestations || [])),
-      transactions: Array.isArray(loadedState?.transactions) ? loadedState.transactions : (Array.isArray(fileData?.transactions) ? fileData.transactions : (seed.transactions || [])),
-      notifications: Array.isArray(loadedState?.notifications) ? loadedState.notifications : (Array.isArray(fileData?.notifications) ? fileData.notifications : (seed.notifications || [])),
+      agreements: mergeById(loadedState?.agreements, fileData?.agreements),
+      workSessions: mergeById(loadedState?.workSessions, fileData?.workSessions),
+      submissions: mergeById(loadedState?.submissions, fileData?.submissions),
+      attestations: mergeById(loadedState?.attestations, fileData?.attestations),
+      transactions: mergeById(loadedState?.transactions, fileData?.transactions),
+      notifications: mergeById(loadedState?.notifications, fileData?.notifications),
       chain: blockchain.chain,
     };
 
@@ -158,6 +186,17 @@ async function loadInitialData() {
     try {
       fs.writeFileSync(DB_FILE, JSON.stringify(merged, null, 2), "utf8");
     } catch {}
+
+    // Synchronize merged state back to Neon so Neon holds the complete union as well
+    if (isNeonConfigured) {
+      persistAppState("agreements", merged.agreements).catch(() => {});
+      persistAppState("workSessions", merged.workSessions).catch(() => {});
+      persistAppState("submissions", merged.submissions).catch(() => {});
+      persistAppState("attestations", merged.attestations).catch(() => {});
+      persistAppState("transactions", merged.transactions).catch(() => {});
+      persistAppState("notifications", merged.notifications).catch(() => {});
+      persistAppState("blockchain_chain", merged.chain).catch(() => {});
+    }
 
     return merged;
   }

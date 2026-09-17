@@ -17,3 +17,12 @@ server.on("error", (err) => {
   }
 });
 
+import("./data/store.js").then(({ saveToDisk }) => {
+  const onExit = () => {
+    try { saveToDisk(); } catch {}
+    process.exit(0);
+  };
+  process.on("SIGINT", onExit);
+  process.on("SIGTERM", onExit);
+});
+
