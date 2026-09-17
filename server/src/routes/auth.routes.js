@@ -1,8 +1,8 @@
 import crypto from "crypto";
 import { Router } from "express";
 import jwt from "jsonwebtoken";
-import { db, publicUser } from "../data/store.js";
-import { isNeonConfigured, sql, persistUser } from "../data/neon.js";
+import { db, publicUser, saveToDisk } from "../data/store.js";
+import { isNeonConfigured, sql, persistUser, rowToUser } from "../data/neon.js";
 import { JWT_SECRET, requireAuth } from "../middleware/auth.js";
 
 const router = Router();
@@ -14,40 +14,36 @@ router.post("/login", async (req, res) => {
   }
 
   const cleanEmail = String(email).trim().toLowerCase();
-  let user = db.users.findOne((u) => u.email.toLowerCase() === cleanEmail);
+  let user = null;
 
-  // If not found in cache and Neon is configured, check Neon DB directly with retry
-  if (!user && isNeonConfigured && sql) {
+  // 1. If Neon is configured, query Neon DB directly to ensure latest credentials
+  if (isNeonConfigured && sql) {
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
         const rows = await sql`SELECT * FROM users WHERE LOWER(email) = LOWER(${cleanEmail});`;
         if (rows.length > 0) {
-          const row = rows[0];
-          const u = {
-            id: row.id,
-            name: row.name,
-            email: row.email,
-            password: row.password,
-            role: row.role,
-            avatar: row.avatar || "",
-            walletAddress: row.wallet_address || "",
-            walletBalance: parseFloat(row.wallet_balance || 0),
-            title: row.title || "",
-            skills: Array.isArray(row.skills) ? row.skills : (row.skills ? (typeof row.skills === "string" ? JSON.parse(row.skills) : row.skills) : []),
-            hourlyRate: row.hourly_rate != null ? parseFloat(row.hourly_rate) : undefined,
-            profileCompleted: Boolean(row.profile_completed),
-            createdAt: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
-          };
-          db.users.insert(u);
-          user = u;
+          user = rowToUser(rows[0]);
+          // Sync into local memory collection
+          const existingIdx = db.users.rows.findIndex((u) => u.email.toLowerCase() === cleanEmail);
+          if (existingIdx >= 0) {
+            db.users.rows[existingIdx] = user;
+          } else {
+            db.users.rows.push(user);
+          }
+          saveToDisk();
           break;
         }
       } catch (err) {
         if (attempt < 3) {
-          await new Promise((r) => setTimeout(r, 600 * attempt));
+          await new Promise((r) => setTimeout(r, 400 * attempt));
         }
       }
     }
+  }
+
+  // 2. If not found in Neon or Neon was unreachable, check local store
+  if (!user) {
+    user = db.users.findOne((u) => u.email.toLowerCase() === cleanEmail);
   }
 
   if (!user || user.password !== password) {
@@ -65,9 +61,9 @@ router.post("/register", async (req, res) => {
   }
 
   const cleanEmail = String(email).trim().toLowerCase();
-  let existing = db.users.findOne((u) => u.email.toLowerCase() === cleanEmail);
+  let existing = null;
 
-  if (!existing && isNeonConfigured && sql) {
+  if (isNeonConfigured && sql) {
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
         const rows = await sql`SELECT id FROM users WHERE LOWER(email) = LOWER(${cleanEmail});`;
@@ -77,10 +73,14 @@ router.post("/register", async (req, res) => {
         }
       } catch (err) {
         if (attempt < 3) {
-          await new Promise((r) => setTimeout(r, 600 * attempt));
+          await new Promise((r) => setTimeout(r, 400 * attempt));
         }
       }
     }
+  }
+
+  if (!existing) {
+    existing = db.users.findOne((u) => u.email.toLowerCase() === cleanEmail);
   }
 
   if (existing) {
@@ -100,7 +100,7 @@ router.post("/register", async (req, res) => {
   const walletAddress = `0x${randomHex}`;
   const initialBalance = cleanRole === "CLIENT" ? 15.0 : 0.0;
 
-  const newUser = db.users.insert({
+  const newUser = {
     id: `user_${cleanRole.toLowerCase()}_${Date.now()}`,
     name: name.trim(),
     email: cleanEmail,
@@ -114,10 +114,17 @@ router.post("/register", async (req, res) => {
     hourlyRate: cleanRole === "FREELANCER" ? 0.012 : undefined,
     profileCompleted: false,
     createdAt: new Date().toISOString(),
-  });
+  };
+
+  db.users.rows.push(newUser);
+  saveToDisk();
 
   if (isNeonConfigured) {
-    await persistUser(newUser);
+    try {
+      await persistUser(newUser);
+    } catch (err) {
+      console.error("[Neon DB] Registration persist failed:", err.message);
+    }
   }
 
   const token = jwt.sign({ sub: newUser.id, role: newUser.role }, JWT_SECRET, { expiresIn: "12h" });

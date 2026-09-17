@@ -1,20 +1,12 @@
+import "../env.js";
 import { neon } from "@neondatabase/serverless";
-import dotenv from "dotenv";
-import path from "path";
-import { fileURLToPath } from "url";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-// Load .env from current working directory, server directory, and repository root
-dotenv.config();
-dotenv.config({ path: path.resolve(__dirname, "../../.env") });
-dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
 const dbUrl = process.env.DATABASE_URL;
 export const isNeonConfigured = Boolean(dbUrl);
 
 export const sql = isNeonConfigured ? neon(dbUrl) : null;
 
-async function withRetry(fn, retries = 3, delayMs = 600, label = "Operation") {
+async function withRetry(fn, retries = 4, delayMs = 800, label = "Operation") {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       return await fn();
@@ -28,7 +20,7 @@ async function withRetry(fn, retries = 3, delayMs = 600, label = "Operation") {
   }
 }
 
-function rowToUser(row) {
+export function rowToUser(row) {
   if (!row) return null;
   return {
     id: row.id,

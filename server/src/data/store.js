@@ -1,3 +1,4 @@
+import "../env.js";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -22,7 +23,7 @@ function deepClone(value) {
 
 let persistenceEnabled = process.env.NODE_ENV !== "test";
 
-function saveToDisk() {
+export function saveToDisk() {
   if (!persistenceEnabled) return;
   try {
     const dump = {
@@ -73,7 +74,9 @@ class Collection {
     this.rows.push(row);
     saveToDisk();
     if (this.name === "users" && isNeonConfigured && persistenceEnabled) {
-      persistUser(row).catch(() => {});
+      persistUser(row).catch((err) => {
+        console.error(`[Neon DB] persistUser error for ${row.email}:`, err.message);
+      });
     }
     return deepClone(row);
   }
@@ -83,13 +86,19 @@ class Collection {
     this.rows[idx] = { ...this.rows[idx], ...patch };
     saveToDisk();
     if (this.name === "users" && isNeonConfigured && persistenceEnabled) {
-      persistUser(this.rows[idx]).catch(() => {});
+      persistUser(this.rows[idx]).catch((err) => {
+        console.error(`[Neon DB] persistUser update error for ${this.rows[idx]?.email}:`, err.message);
+      });
     }
     return deepClone(this.rows[idx]);
   }
 }
 
 async function loadInitialData() {
+  let loadedUsers = [];
+  let loadedState = null;
+  let fromNeon = false;
+
   if (persistenceEnabled && isNeonConfigured) {
     try {
       await initNeon(seed);
@@ -99,37 +108,75 @@ async function loadInitialData() {
       ]);
 
       if (Array.isArray(neonUsers) && neonUsers.length > 0) {
-        if (Array.isArray(neonAppState?.blockchain_chain) && neonAppState.blockchain_chain.length > 0) {
-          blockchain.loadChain(neonAppState.blockchain_chain);
-        }
-        return {
-          users: neonUsers,
-          agreements: Array.isArray(neonAppState?.agreements) ? neonAppState.agreements : (seed.agreements || []),
-          workSessions: Array.isArray(neonAppState?.workSessions) ? neonAppState.workSessions : (seed.workSessions || []),
-          submissions: Array.isArray(neonAppState?.submissions) ? neonAppState.submissions : (seed.submissions || []),
-          attestations: Array.isArray(neonAppState?.attestations) ? neonAppState.attestations : (seed.attestations || []),
-          transactions: Array.isArray(neonAppState?.transactions) ? neonAppState.transactions : (seed.transactions || []),
-          notifications: Array.isArray(neonAppState?.notifications) ? neonAppState.notifications : (seed.notifications || []),
-        };
+        loadedUsers = neonUsers;
+        loadedState = neonAppState;
+        fromNeon = true;
       }
     } catch (err) {
-      console.warn("[Neon DB] Fallback to file store:", err.message);
+      console.warn("[Neon DB] Fallback to local store:", err.message);
     }
   }
 
   const targetFile = fs.existsSync(DB_FILE) ? DB_FILE : (fs.existsSync(LOCAL_DB_FILE) ? LOCAL_DB_FILE : null);
-  if (persistenceEnabled && targetFile) {
+  let fileData = null;
+  if (targetFile) {
     try {
       const raw = fs.readFileSync(targetFile, "utf8");
-      const parsed = JSON.parse(raw);
-      if (parsed && Array.isArray(parsed.users)) {
-        if (Array.isArray(parsed.chain) && parsed.chain.length > 0) {
-          blockchain.loadChain(parsed.chain);
-        }
-        return parsed;
-      }
+      fileData = JSON.parse(raw);
     } catch {}
   }
+
+  if (fromNeon) {
+    // If local file had extra users not in Neon, merge them
+    if (Array.isArray(fileData?.users)) {
+      for (const fu of fileData.users) {
+        if (!loadedUsers.some((nu) => nu.email.toLowerCase() === fu.email.toLowerCase())) {
+          loadedUsers.push(fu);
+          persistUser(fu).catch(() => {});
+        }
+      }
+    }
+
+    if (Array.isArray(loadedState?.blockchain_chain) && loadedState.blockchain_chain.length > 0) {
+      blockchain.loadChain(loadedState.blockchain_chain);
+    } else if (Array.isArray(fileData?.chain) && fileData.chain.length > 0) {
+      blockchain.loadChain(fileData.chain);
+    }
+
+    const merged = {
+      users: loadedUsers,
+      agreements: Array.isArray(loadedState?.agreements) && loadedState.agreements.length > 0 ? loadedState.agreements : (Array.isArray(fileData?.agreements) ? fileData.agreements : (seed.agreements || [])),
+      workSessions: Array.isArray(loadedState?.workSessions) && loadedState.workSessions.length > 0 ? loadedState.workSessions : (Array.isArray(fileData?.workSessions) ? fileData.workSessions : (seed.workSessions || [])),
+      submissions: Array.isArray(loadedState?.submissions) && loadedState.submissions.length > 0 ? loadedState.submissions : (Array.isArray(fileData?.submissions) ? fileData.submissions : (seed.submissions || [])),
+      attestations: Array.isArray(loadedState?.attestations) ? loadedState.attestations : (Array.isArray(fileData?.attestations) ? fileData.attestations : (seed.attestations || [])),
+      transactions: Array.isArray(loadedState?.transactions) ? loadedState.transactions : (Array.isArray(fileData?.transactions) ? fileData.transactions : (seed.transactions || [])),
+      notifications: Array.isArray(loadedState?.notifications) ? loadedState.notifications : (Array.isArray(fileData?.notifications) ? fileData.notifications : (seed.notifications || [])),
+      chain: blockchain.chain,
+    };
+
+    // Cache the loaded Neon data to disk immediately so local file store is always fully in sync
+    try {
+      fs.writeFileSync(DB_FILE, JSON.stringify(merged, null, 2), "utf8");
+    } catch {}
+
+    return merged;
+  }
+
+  if (persistenceEnabled && fileData && Array.isArray(fileData.users) && fileData.users.length > 0) {
+    if (Array.isArray(fileData.chain) && fileData.chain.length > 0) {
+      blockchain.loadChain(fileData.chain);
+    }
+    return {
+      users: fileData.users,
+      agreements: Array.isArray(fileData.agreements) ? fileData.agreements : (seed.agreements || []),
+      workSessions: Array.isArray(fileData.workSessions) ? fileData.workSessions : (seed.workSessions || []),
+      submissions: Array.isArray(fileData.submissions) ? fileData.submissions : (seed.submissions || []),
+      attestations: Array.isArray(fileData.attestations) ? fileData.attestations : (seed.attestations || []),
+      transactions: Array.isArray(fileData.transactions) ? fileData.transactions : (seed.transactions || []),
+      notifications: Array.isArray(fileData.notifications) ? fileData.notifications : (seed.notifications || []),
+    };
+  }
+
   return {
     users: seed.users,
     agreements: seed.agreements,
@@ -162,7 +209,8 @@ export function resetDb() {
   db.attestations = new Collection(seed.attestations || [], "attestations");
   db.transactions = new Collection(seed.transactions || [], "transactions");
   db.notifications = new Collection(seed.notifications || [], "notifications");
-  saveToDisk();
+  // NOTE: resetDb() is strictly an in-memory reset for test isolation.
+  // We intentionally do NOT call saveToDisk() here to prevent tests or resets from erasing real users!
 }
 
 export function publicUser(user) {

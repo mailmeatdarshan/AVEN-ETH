@@ -1,11 +1,13 @@
+import "../env.js";
 import jwt from "jsonwebtoken";
-import { db } from "../data/store.js";
+import { db, saveToDisk } from "../data/store.js";
+import { isNeonConfigured, sql, rowToUser } from "../data/neon.js";
 
 // Prototype-only secret. Override with a real JWT_SECRET env var if you
 // deploy this anywhere beyond a local demo.
 export const JWT_SECRET = process.env.JWT_SECRET || "aven-eth-prototype-secret-do-not-use-in-prod";
 
-export function requireAuth(req, res, next) {
+export async function requireAuth(req, res, next) {
   const header = req.headers.authorization || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : null;
 
@@ -15,7 +17,17 @@ export function requireAuth(req, res, next) {
 
   try {
     const payload = jwt.verify(token, JWT_SECRET);
-    const user = db.users.findById(payload.sub);
+    let user = db.users.findById(payload.sub);
+    if (!user && isNeonConfigured && sql) {
+      try {
+        const rows = await sql`SELECT * FROM users WHERE id = ${payload.sub};`;
+        if (rows.length > 0) {
+          user = rowToUser(rows[0]);
+          db.users.rows.push(user);
+          saveToDisk();
+        }
+      } catch {}
+    }
     if (!user) {
       return res.status(401).json({ error: "Session is no longer valid. Please log in again." });
     }
