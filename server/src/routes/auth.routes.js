@@ -16,31 +16,38 @@ router.post("/login", async (req, res) => {
   const cleanEmail = String(email).trim().toLowerCase();
   let user = db.users.findOne((u) => u.email.toLowerCase() === cleanEmail);
 
-  // If not found in cache and Neon is configured, check Neon DB directly
+  // If not found in cache and Neon is configured, check Neon DB directly with retry
   if (!user && isNeonConfigured && sql) {
-    try {
-      const rows = await sql`SELECT * FROM users WHERE LOWER(email) = LOWER(${cleanEmail});`;
-      if (rows.length > 0) {
-        const row = rows[0];
-        const u = {
-          id: row.id,
-          name: row.name,
-          email: row.email,
-          password: row.password,
-          role: row.role,
-          avatar: row.avatar || "",
-          walletAddress: row.wallet_address || "",
-          walletBalance: parseFloat(row.wallet_balance || 0),
-          title: row.title || "",
-          skills: Array.isArray(row.skills) ? row.skills : (row.skills ? (typeof row.skills === "string" ? JSON.parse(row.skills) : row.skills) : []),
-          hourlyRate: row.hourly_rate != null ? parseFloat(row.hourly_rate) : undefined,
-          profileCompleted: Boolean(row.profile_completed),
-          createdAt: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
-        };
-        db.users.insert(u);
-        user = u;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const rows = await sql`SELECT * FROM users WHERE LOWER(email) = LOWER(${cleanEmail});`;
+        if (rows.length > 0) {
+          const row = rows[0];
+          const u = {
+            id: row.id,
+            name: row.name,
+            email: row.email,
+            password: row.password,
+            role: row.role,
+            avatar: row.avatar || "",
+            walletAddress: row.wallet_address || "",
+            walletBalance: parseFloat(row.wallet_balance || 0),
+            title: row.title || "",
+            skills: Array.isArray(row.skills) ? row.skills : (row.skills ? (typeof row.skills === "string" ? JSON.parse(row.skills) : row.skills) : []),
+            hourlyRate: row.hourly_rate != null ? parseFloat(row.hourly_rate) : undefined,
+            profileCompleted: Boolean(row.profile_completed),
+            createdAt: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
+          };
+          db.users.insert(u);
+          user = u;
+          break;
+        }
+      } catch (err) {
+        if (attempt < 3) {
+          await new Promise((r) => setTimeout(r, 600 * attempt));
+        }
       }
-    } catch (_) {}
+    }
   }
 
   if (!user || user.password !== password) {
@@ -61,10 +68,19 @@ router.post("/register", async (req, res) => {
   let existing = db.users.findOne((u) => u.email.toLowerCase() === cleanEmail);
 
   if (!existing && isNeonConfigured && sql) {
-    try {
-      const rows = await sql`SELECT id FROM users WHERE LOWER(email) = LOWER(${cleanEmail});`;
-      if (rows.length > 0) existing = rows[0];
-    } catch (_) {}
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const rows = await sql`SELECT id FROM users WHERE LOWER(email) = LOWER(${cleanEmail});`;
+        if (rows.length > 0) {
+          existing = rows[0];
+          break;
+        }
+      } catch (err) {
+        if (attempt < 3) {
+          await new Promise((r) => setTimeout(r, 600 * attempt));
+        }
+      }
+    }
   }
 
   if (existing) {
