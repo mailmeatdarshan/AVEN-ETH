@@ -84,7 +84,7 @@ export default function WorkSession() {
   const isLocalhost = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
   const apiFlag = isLocalhost ? "" : ` --api ${window.location.origin}/api`;
   const cliCommand = `aven-eth watch --stream ${agreement?.id}${apiFlag}${tokenFlag}`;
-  const localCliCommand = `node cli/bin/aven-eth.js watch --stream ${agreement?.id}${tokenFlag}`;
+  const localCliCommand = `node cli/bin/aven-eth.js watch --stream ${agreement?.id}${apiFlag}${tokenFlag}`;
 
   const isGitConnected = Boolean(
     agreement?.session?.gitConnected ||
